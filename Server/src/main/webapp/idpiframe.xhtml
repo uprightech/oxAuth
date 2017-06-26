@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8"/>
+    <title>
+        oxAuth - IDP iFrame
+    </title>
+    <script src="https://code.jquery.com/jquery-3.2.1.min.js"></script>
+    <script src="js/iframe.js"></script>
+    <script>
+        //<![CDATA[
+        (function () {
+            function IFrame(origin, rpcToken, clearCache) {
+                console.log("IFrame(origin, rpcToken, clearCache) (" + origin + ", " + rpcToken + ", " + clearCache + ")");
+
+                this.origin = origin;
+                this.rpcToken = rpcToken;
+                this.clearCache = clearCache;
+
+                // TODO: If clearCache == 1, then all cached data for current origin will be cleared.
+
+                console.log("IDP IFrame Loaded");
+                this.idpReady();
+            }
+
+            //////////
+            // RPCs
+
+            IFrame.prototype.monitorClient = function (params, id, rpcToken) {
+                console.log("monitorClient(params, id, rpcToken) (" + JSON.stringify(params) + ", " + id + ", " + rpcToken + ")");
+
+                if (params.clientId == null) {
+                    console.error("JSON message is not valid. Client ID cannot be null");
+                }
+
+                var result = clients.add(params.clientId);
+
+                if (id != null) {
+                    var response = {
+                        id: id,
+                        result: result,
+                        rpcToken: rpcToken
+                    };
+
+                    return response;
+                }
+            }
+
+            IFrame.prototype.getSessionSelector = function (params, id, rpcToken) {
+                console.log("getSessionSelector(params, id, rpcToken) (" + JSON.stringify(params) + ", " + id + ", " + rpcToken + ")");
+
+                var path = 'gluu/oxauth';
+
+                var policy = params.policy || 'default';
+                var domain = params.domain;
+                var crossSubDomains = params.crossSubDomains || false;
+
+                var key = [path,
+                    encodeURIComponent(policy),
+                    encodeURIComponent(domain),
+                    crossSubDomains ? '1' : '0'
+                ].join('/');
+
+                var val = window.localStorage.getItem(key);
+
+                if (val) {
+                    val = JSON.parse(val);
+                }
+
+                if (id != null) {
+                    var response = {
+                        id: id,
+                        result: val,
+                        rpcToken: rpcToken
+                    };
+
+                    return response;
+                }
+            }
+
+            IFrame.prototype.setSessionSelector = function (params, id, rpcToken) {
+                console.log("setSessionSelector(params, id, rpcToken) (" + JSON.stringify(params) + ", " + id + ", " + rpcToken + ")");
+
+                var path = 'gluu/oxauth';
+
+                var policy = params.policy || 'default';
+                var domain = params.domain;
+                var crossSubDomains = params.crossSubDomains || false;
+                var hint = params.hint;
+                var disabled = params.disabled || false;
+
+                var key = [path,
+                    encodeURIComponent(policy),
+                    encodeURIComponent(domain),
+                    crossSubDomains ? '1' : '0'
+                ].join('/');
+                var val = JSON.stringify({hint: hint, disabled: disabled});
+
+                var result = false;
+                try {
+                    localStorage.setItem(key, val);
+                    result = true;
+                } catch (ex) {
+                    result = false;
+                }
+
+                if (id != null) {
+                    var response = {
+                        id: id,
+                        result: result,
+                        rpcToken: rpcToken
+                    };
+
+                    return response;
+                }
+            }
+
+            IFrame.prototype.getTokenResponse = function (params, id, rpcToken) {
+                console.log("getTokenResponse(params, id, rpcToken) (" + JSON.stringify(params) + ", " + id + ", " + rpcToken + ")");
+
+                var path = 'gluu/oxauth';
+                var key = [path,
+                    encodeURIComponent(params.clientId),
+                    encodeURIComponent(params.loginHint)
+                ].join('/');
+
+                if (sessionStorage.getItem(key)) {
+                    // TODO: scopes, response types, expires date MUST be taken into account.
+                    console.log("Response cached in Session Storage");
+                    console.log(sessionStorage.getItem(key));
+
+                    var result = sessionStorage.getItem(key);
+                    if (id != null) {
+                        var message = {
+                            id: id,
+                            result: result,
+                            rpcToken: rpcToken
+                        };
+
+                        parent.postMessage(message, origin);
+                    }
+
+                    // AuthResult Event
+                    var message = {
+                        method: "fireIdpEvent",
+                        params: {
+                            type: "authResult",
+                            clientId: params.clientId,
+                            id: id,
+                            authResult: {
+                                login_hint: result.login_hint
+                            }
+                        },
+                        rpcToken: rpcToken
+                    };
+
+                    parent.postMessage(message, origin);
+                } else {
+                    var q = params.request;
+                    q.client_id = params.clientId;
+                    //q.redirect_uri = "storagerelay://https/localhostssl?id=" + id;
+                    q.redirect_uri = "https://ce.gluu.info:8443/idpcallback";
+                    q.nonce = "12345";
+                    q.login_hint = params.loginHint;
+                    q.ss_domain = params.sessionSelector.domain;
+                    q.origin = origin;
+                    q.state = id;
+
+                    var url = "https://ce.gluu.info:8443/seam/resource/restv1/oxauth/authorize"
+                            + '?' + q.toQueryString();
+
+                    window.open(url, "_blank", "toolbar=yes,scrollbars=yes,resizable=yes,top=500,left=500,width=400,height=400");
+                }
+            }
+
+            IFrame.prototype.listIdpSessions = function (params, id, rpcToken) {
+                console.log("listIdpSessions(params, id, rpcToken) (" + JSON.stringify(params) + ", " + id + ", " + rpcToken + ")");
+
+                var q = {
+                    client_id: params.clientId,
+                    ss_domain: params.sessionSelector.domain,
+                    scope: params.request.scope,
+                    origin: origin
+                };
+
+                var url = "https://ce.gluu.info:8443/seam/resource/restv1/oxauth/list_sessions"
+                        + '?' + q.toQueryString();
+
+                var xhr = new XMLHttpRequest();
+                xhr.onreadystatechange = function (e) {
+                    switch (xhr.readyState) {
+                        case 4:  // DONE
+                            if (xhr.status != 200) {
+                                return cb(null);
+                            }
+
+                            var sessions = JSON.parse(xhr.responseText);
+
+                            //return cb(null, sessions);
+                            if (id != null) {
+                                var response = {
+                                    id: "599-211931.20572639475",
+                                    result: {
+                                        sessions: [{
+                                            login_hint: "AJMrCA...",
+                                            email: "test at gmail.com",
+                                            displayName: "James Zhao",
+                                            photoUrl: "https://someUrl",
+                                            session_state: {
+                                                extraQueryParams: {authuser: "0"}
+                                            }
+                                        }, {
+                                            session_state: {
+                                                extraQueryParams: {authuser: "1"}
+                                            }
+                                        }],
+                                        first_issued_at: 1420605596916,
+                                        expires_at: 1420609196916,
+                                        scope: "openid email"
+                                    },
+                                    rpcToken: "12345678"
+                                };
+
+                                return response;
+                            }
+                            break;
+                    }
+                };
+                xhr.open('GET', url + '?' + q.toQueryString());
+                xhr.send();
+            }
+
+            IFrame.prototype.revoke = function (params, id, rpcToken) {
+                console.log("revoke(params, id, rpcToken) (" + JSON.stringify(params) + ", " + id + ", " + rpcToken + ")");
+
+                var removeKeys = [];
+                for (var i = 0; i < sessionStorage.length; i++) {
+                    var key = sessionStorage.key(i);
+                    var keyArray = key.split('/');
+                    if (keyArray.length != 4) {
+                        console.log('Invalid session storage key.');
+                    } else {
+                        var clientId = decodeURIComponent(keyArray[2]);
+                        if (clientId == params.clientId) {
+                            removeKeys.push(key);
+                        }
+                    }
+                }
+                for (var i = 0; i < removeKeys.length; i++) {
+                    sessionStorage.removeItem(removeKeys[i]);
+                }
+
+                if (id != null) {
+                    var response = {
+                        id: id,
+                        result: true,
+                        rpcToken: rpcToken
+                    };
+
+                    return response;
+                }
+            }
+
+            //////////
+            // Events
+
+            IFrame.prototype.idpReady = function () {
+                var containerOrigin = this.origin;
+
+                var message = {
+                    method: "fireIdpEvent",
+                    params: {
+                        type: "idpReady"
+                    },
+                    rpcToken: this.rpcToken
+                };
+
+                parent.postMessage(message, containerOrigin);
+            }
+
+            //////////
+            // Init
+
+            window.addEventListener("message", function (e) {
+                if (event.origin !== iframe.origin) {
+                    return;
+                }
+
+                var message = e.data;
+
+                if (!message.hasOwnProperty("method")
+                        || !message.hasOwnProperty("params")
+                        || !message.hasOwnProperty("rpcToken")) {
+                    console.error("JSON message is not valid");
+                    return;
+                }
+
+                var response = null;
+                switch (message.method) {
+                    case "monitorClient":
+                        response = iframe.monitorClient(message.params, message.id, message.rpcToken);
+                        break;
+                    case "getSessionSelector":
+                        response = iframe.getSessionSelector(message.params, message.id, message.rpcToken);
+                        break;
+                    case "setSessionSelector":
+                        response = iframe.setSessionSelector(message.params, message.id, message.rpcToken);
+                        break;
+                    case "getTokenResponse":
+                        response = iframe.getTokenResponse(message.params, message.id, message.rpcToken);
+                        break;
+                    case "listIdpSessions":
+                        response = iframe.listIdpSessions(message.params, message.id, message.rpcToken);
+                        break;
+                    case "revoke":
+                        response = iframe.revoke(message.params, message.id, message.rpcToken);
+                        break;
+                    default:
+                        console.error("Method is not valid.");
+                }
+
+                if (response != null) {
+                    e.source.postMessage(response, e.origin);
+                }
+            });
+
+            window.addEventListener("storage", function (e) {
+                if (e.newValue == null) {
+                    return;
+                }
+
+                var key = e.key.split('/');
+                if (key.length != 6) {
+                    console.log('Invalid storage key while relaying authorization response');
+                    return;
+                }
+                var origin = decodeURIComponent(key[3]);
+                var clientId = decodeURIComponent(key[4]);
+                var id = decodeURIComponent(key[5]);
+                var result = JSON.parse(e.newValue);
+
+                var sessionStorageKey = ['gluu/oxauth',
+                    encodeURIComponent(clientId),
+                    encodeURIComponent(result.login_hint)
+                ].join('/');
+                sessionStorage.setItem(sessionStorageKey, JSON.stringify(result));
+
+                if (id != null) {
+                    var message = {
+                        id: id,
+                        result: result,
+                        rpcToken: rpcToken
+                    };
+
+                    parent.postMessage(message, origin);
+                }
+
+                // AuthResult Event
+                var message = {
+                    method: "fireIdpEvent",
+                    params: {
+                        type: "authResult",
+                        clientId: clientId,
+                        id: id,
+                        authResult: {
+                            login_hint: result.login_hint
+                        }
+                    },
+                    rpcToken: rpcToken
+                };
+
+                parent.postMessage(message, origin);
+            });
+
+            var origin = null;
+            var rpcToken = null;
+            var clearCache = 0;
+            var hash = window.location.hash.substring(1); // slice off leading `#`
+            var params = hash.split("&");
+            for (var i = 0; i < params.length; i++) {
+                var param = params[i].split("=");
+
+                if (param[0] == "origin") {
+                    origin = param[1];
+                } else if (param[0] == "rpcToken") {
+                    rpcToken = param[1];
+                } else if (param[0] == "clearCache") {
+                    clearCache = param[1];
+                }
+            }
+
+            var iframe = new IFrame(origin, rpcToken, clearCache);
+        })();
+        //]]>
+    </script>
+</head>
+<body></body>
+</html>

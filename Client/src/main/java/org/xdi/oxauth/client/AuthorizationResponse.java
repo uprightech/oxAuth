@@ -27,7 +27,7 @@ import static org.xdi.oxauth.model.authorize.AuthorizeResponseParam.*;
  * Represents an authorization response received from the authorization server.
  *
  * @author Javier Rojas Blum
- * @version December 15, 2015
+ * @version June 26, 2017
  */
 public class AuthorizationResponse extends BaseResponse {
 
@@ -39,6 +39,8 @@ public class AuthorizationResponse extends BaseResponse {
     private String idToken;
     private String state;
     private String sessionState;
+    private String loginHint;
+    private String clientId;
     private Map<String, String> customParams;
     private ResponseMode responseMode;
 
@@ -136,6 +138,14 @@ public class AuthorizationResponse extends BaseResponse {
                         state = params.get(STATE);
                         params.remove(STATE);
                     }
+                    if (params.containsKey(LOGIN_HINT)) {
+                        loginHint = params.get(LOGIN_HINT);
+                        params.remove(LOGIN_HINT);
+                    }
+                    if (params.containsKey(CLIENT_ID)) {
+                        clientId = params.get(CLIENT_ID);
+                        params.remove(CLIENT_ID);
+                    }
                     if (params.containsKey("error")) {
                         errorType = AuthorizeErrorResponseType.fromString(params.get("error"));
                         params.remove("error");
@@ -211,6 +221,22 @@ public class AuthorizationResponse extends BaseResponse {
      */
     public void setSessionState(String p_sessionState) {
         sessionState = p_sessionState;
+    }
+
+    public String getLoginHint() {
+        return loginHint;
+    }
+
+    public void setLoginHint(String loginHint) {
+        this.loginHint = loginHint;
+    }
+
+    public String getClientId() {
+        return clientId;
+    }
+
+    public void setClientId(String clientId) {
+        this.clientId = clientId;
     }
 
     public Map<String, String> getCustomParams() {

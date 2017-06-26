@@ -36,12 +36,14 @@ import java.util.Date;
  * available.
  * </p>
  *
- * @author Javier Rojas Blum Date: 09.29.2011
+ * @author Javier Rojas Blum
  * @author Yuriy Movchan
+ * @version June 26, 2017
  */
 public class ImplicitGrant extends AuthorizationGrant {
-	
-	public ImplicitGrant() {}
+
+    public ImplicitGrant() {
+    }
 
     /**
      * Constructs an implicit grant.

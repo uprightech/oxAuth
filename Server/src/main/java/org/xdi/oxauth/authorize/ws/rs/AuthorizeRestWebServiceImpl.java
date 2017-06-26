@@ -6,33 +6,8 @@
 
 package org.xdi.oxauth.authorize.ws.rs;
 
-import static org.xdi.oxauth.model.util.StringUtils.implode;
-
-import java.net.ConnectException;
-import java.net.URI;
-import java.net.URISyntaxException;
-import java.net.UnknownHostException;
-import java.security.SignatureException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Calendar;
-import java.util.GregorianCalendar;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Map.Entry;
-import java.util.Set;
-import java.util.TimeZone;
-
-import javax.inject.Inject;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
-import javax.ws.rs.HttpMethod;
-import javax.ws.rs.Path;
-import javax.ws.rs.core.Response;
-import javax.ws.rs.core.Response.ResponseBuilder;
-import javax.ws.rs.core.SecurityContext;
-
+import com.google.common.collect.Maps;
+import com.wordnik.swagger.annotations.Api;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang.ArrayUtils;
 import org.apache.commons.lang.StringUtils;
@@ -44,24 +19,8 @@ import org.xdi.oxauth.audit.ApplicationAuditLogger;
 import org.xdi.oxauth.auth.Authenticator;
 import org.xdi.oxauth.model.audit.Action;
 import org.xdi.oxauth.model.audit.OAuth2AuditLog;
-import org.xdi.oxauth.model.authorize.AuthorizeErrorResponseType;
-import org.xdi.oxauth.model.authorize.AuthorizeParamsValidator;
-import org.xdi.oxauth.model.authorize.AuthorizeRequestParam;
-import org.xdi.oxauth.model.authorize.AuthorizeResponseParam;
-import org.xdi.oxauth.model.authorize.Claim;
-import org.xdi.oxauth.model.authorize.JwtAuthorizationRequest;
-import org.xdi.oxauth.model.authorize.ScopeChecker;
-import org.xdi.oxauth.model.common.AccessToken;
-import org.xdi.oxauth.model.common.AuthorizationCode;
-import org.xdi.oxauth.model.common.AuthorizationGrant;
-import org.xdi.oxauth.model.common.AuthorizationGrantList;
-import org.xdi.oxauth.model.common.IdToken;
-import org.xdi.oxauth.model.common.Prompt;
-import org.xdi.oxauth.model.common.ResponseMode;
-import org.xdi.oxauth.model.common.ResponseType;
-import org.xdi.oxauth.model.common.SessionIdState;
-import org.xdi.oxauth.model.common.SessionState;
-import org.xdi.oxauth.model.common.User;
+import org.xdi.oxauth.model.authorize.*;
+import org.xdi.oxauth.model.common.*;
 import org.xdi.oxauth.model.configuration.AppConfiguration;
 import org.xdi.oxauth.model.error.ErrorResponseFactory;
 import org.xdi.oxauth.model.exception.AcrChangedException;
@@ -73,13 +32,7 @@ import org.xdi.oxauth.model.util.Base64Util;
 import org.xdi.oxauth.model.util.JwtUtil;
 import org.xdi.oxauth.model.util.Util;
 import org.xdi.oxauth.security.Identity;
-import org.xdi.oxauth.service.AuthenticationFilterService;
-import org.xdi.oxauth.service.AuthenticationService;
-import org.xdi.oxauth.service.ClientAuthorizationsService;
-import org.xdi.oxauth.service.ClientService;
-import org.xdi.oxauth.service.RedirectionUriService;
-import org.xdi.oxauth.service.SessionStateService;
-import org.xdi.oxauth.service.UserService;
+import org.xdi.oxauth.service.*;
 import org.xdi.oxauth.util.QueryStringDecoder;
 import org.xdi.oxauth.util.RedirectUri;
 import org.xdi.oxauth.util.RedirectUtil;
@@ -87,14 +40,29 @@ import org.xdi.oxauth.util.ServerUtil;
 import org.xdi.util.StringHelper;
 import org.xdi.util.security.StringEncrypter;
 
-import com.google.common.collect.Maps;
-import com.wordnik.swagger.annotations.Api;
+import javax.inject.Inject;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+import javax.ws.rs.HttpMethod;
+import javax.ws.rs.Path;
+import javax.ws.rs.core.Response;
+import javax.ws.rs.core.Response.ResponseBuilder;
+import javax.ws.rs.core.SecurityContext;
+import java.net.ConnectException;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.net.UnknownHostException;
+import java.security.SignatureException;
+import java.util.*;
+import java.util.Map.Entry;
+
+import static org.xdi.oxauth.model.util.StringUtils.implode;
 
 /**
  * Implementation for request authorization through REST web services.
  *
  * @author Javier Rojas Blum
- * @version December 26, 2016
+ * @version June 26, 2017
  */
 @Path("/oxauth")
 @Api(value = "/oxauth/authorize", description = "Authorization Endpoint")
@@ -135,7 +103,7 @@ public class AuthorizeRestWebServiceImpl implements AuthorizeRestWebService {
 
     @Inject
     private ClientAuthorizationsService clientAuthorizationsService;
-    
+
     @Inject
     private Authenticator authenticator;
 
@@ -219,8 +187,8 @@ public class AuthorizeRestWebServiceImpl implements AuthorizeRestWebService {
         try {
             Map<String, String> customResponseHeaders = Util.jsonObjectArrayStringAsMap(customRespHeaders);
 
-			sessionStateService.assertAuthenticatedSessionCorrespondsToNewRequest(sessionUser, acrValuesStr);
-            	 
+            sessionStateService.assertAuthenticatedSessionCorrespondsToNewRequest(sessionUser, acrValuesStr);
+
             if (!AuthorizeParamsValidator.validateParams(responseType, clientId, prompts, nonce, request, requestUri)) {
                 if (clientId != null && redirectUri != null && redirectionUriService.validateRedirectionUri(clientId, redirectUri) != null) {
                     RedirectUri redirectUriResponse = new RedirectUri(redirectUri, responseTypes, responseMode);
@@ -526,22 +494,41 @@ public class AuthorizeRestWebServiceImpl implements AuthorizeRestWebService {
 
                                 AuthorizationCode authorizationCode = null;
                                 if (responseTypes.contains(ResponseType.CODE)) {
-                                    authorizationGrant = authorizationGrantList.createAuthorizationCodeGrant(user, client,
-                                            sessionUser.getAuthenticationTime());
-                                    authorizationGrant.setNonce(nonce);
-                                    authorizationGrant.setJwtAuthorizationRequest(jwtAuthorizationRequest);
-                                    authorizationGrant.setScopes(scopes);
-                                    authorizationGrant.setCodeChallenge(codeChallenge);
-                                    authorizationGrant.setCodeChallengeMethod(codeChallengeMethod);
+                                    if (authorizationGrant == null) {
+                                        authorizationGrant = authorizationGrantList.createAuthorizationCodeGrant(user, client,
+                                                sessionUser.getAuthenticationTime());
+                                        authorizationGrant.setNonce(nonce);
+                                        authorizationGrant.setJwtAuthorizationRequest(jwtAuthorizationRequest);
+                                        authorizationGrant.setScopes(scopes);
+                                        authorizationGrant.setCodeChallenge(codeChallenge);
+                                        authorizationGrant.setCodeChallengeMethod(codeChallengeMethod);
 
-                                    // Store acr_values
-                                    authorizationGrant.setAcrValues(acrValuesStr);
-                                    authorizationGrant.setSessionDn(sessionUser.getDn());
-                                    authorizationGrant.save(); // call save after object modification!!!
-
+                                        // Store acr_values
+                                        authorizationGrant.setAcrValues(acrValuesStr);
+                                        authorizationGrant.setSessionDn(sessionUser.getDn());
+                                        authorizationGrant.save(); // call save after object modification!!!
+                                    }
                                     authorizationCode = authorizationGrant.getAuthorizationCode();
 
                                     redirectUriResponse.addResponseParameter("code", authorizationCode.getCode());
+                                }
+
+                                if (responseTypes.contains(ResponseType.PERMISSION)) {
+                                    if (authorizationGrant == null) {
+                                        authorizationGrant = authorizationGrantList.createPermissionGrant(user, client,
+                                                sessionUser.getAuthenticationTime());
+                                        authorizationGrant.setNonce(nonce);
+                                        authorizationGrant.setJwtAuthorizationRequest(jwtAuthorizationRequest);
+                                        authorizationGrant.setScopes(scopes);
+
+                                        // Store acr_values
+                                        authorizationGrant.setAcrValues(acrValuesStr);
+                                        authorizationGrant.setSessionDn(sessionUser.getDn());
+                                        authorizationGrant.save(); // call save after object modification!!!
+                                    }
+
+                                    redirectUriResponse.addResponseParameter(AuthorizeResponseParam.CLIENT_ID, client.getClientId());
+                                    redirectUriResponse.addResponseParameter(AuthorizeResponseParam.LOGIN_HINT, user.getUserId());
                                 }
 
                                 AccessToken newAccessToken = null;
@@ -796,10 +783,10 @@ public class AuthorizeRestWebServiceImpl implements AuthorizeRestWebService {
         SessionState sessionUser = identity.getSessionState();
 
         identity.logout();
-        
+
         if (sessionUser != null) {
-	        sessionUser.setUserDn(null);
-	       	sessionUser.setAuthenticationTime(null);
+            sessionUser.setUserDn(null);
+            sessionUser.setAuthenticationTime(null);
         }
 
 

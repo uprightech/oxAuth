@@ -8,7 +8,7 @@ package org.xdi.oxauth.model.authorize;
 
 /**
  * @author Javier Rojas Blum
- * @version December 15, 2015
+ * @version June 26, 2017
  */
 public interface AuthorizeResponseParam {
 
@@ -19,6 +19,8 @@ public interface AuthorizeResponseParam {
     public static final String SCOPE = "scope";
     public static final String ID_TOKEN = "id_token";
     public static final String STATE = "state";
+    public static final String LOGIN_HINT = "login_hint";
+    public static final String CLIENT_ID = "client_id";
 
     /**
      * String that represents the End-User's login state at the OP.
