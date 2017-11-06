@@ -9,6 +9,7 @@ package org.xdi.oxauth.service;
 import java.util.Properties;
 
 import javax.ejb.Stateless;
+import javax.enterprise.context.ApplicationScoped;
 import javax.inject.Inject;
 import javax.inject.Named;
 
@@ -23,7 +24,7 @@ import org.xdi.util.security.StringEncrypter.EncryptionException;
  *
  * @author Yuriy Movchan Date: 09/23/2014
  */
-@Stateless
+@ApplicationScoped
 @Named
 public class EncryptionService {
 
@@ -40,6 +41,29 @@ public class EncryptionService {
 
 		return stringEncrypter.decrypt(encryptedString);
     }
+
+	public String decrypt(String encryptedValue, boolean returnSource) {
+		if (encryptedValue == null) {
+			return encryptedValue;
+		}
+
+		String resultValue;
+		if (returnSource) {
+			resultValue = encryptedValue;
+		} else {
+			resultValue = null;
+		}
+
+		try {
+			resultValue = stringEncrypter.decrypt(encryptedValue);
+		} catch (Exception ex) {
+			if (!returnSource) {
+				log.error(String.format("Failed to decrypt value: '%s'", encryptedValue, ex));
+			}
+		}
+
+		return resultValue;
+	}
 
 	public String encrypt(String unencryptedString) throws EncryptionException {
 		if (StringHelper.isEmpty(unencryptedString)) {

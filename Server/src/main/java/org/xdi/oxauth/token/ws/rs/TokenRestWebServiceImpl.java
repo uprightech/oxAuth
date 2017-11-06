@@ -6,17 +6,8 @@
 
 package org.xdi.oxauth.token.ws.rs;
 
-import java.security.SignatureException;
-
-import javax.inject.Inject;
-import javax.servlet.http.HttpServletRequest;
-import javax.ws.rs.Path;
-import javax.ws.rs.WebApplicationException;
-import javax.ws.rs.core.CacheControl;
-import javax.ws.rs.core.Response;
-import javax.ws.rs.core.Response.ResponseBuilder;
-import javax.ws.rs.core.SecurityContext;
-
+import com.google.common.base.Strings;
+import org.apache.commons.lang.StringUtils;
 import org.codehaus.jettison.json.JSONException;
 import org.codehaus.jettison.json.JSONObject;
 import org.slf4j.Logger;
@@ -24,17 +15,7 @@ import org.xdi.oxauth.audit.ApplicationAuditLogger;
 import org.xdi.oxauth.model.audit.Action;
 import org.xdi.oxauth.model.audit.OAuth2AuditLog;
 import org.xdi.oxauth.model.authorize.CodeVerifier;
-import org.xdi.oxauth.model.common.AccessToken;
-import org.xdi.oxauth.model.common.AuthorizationCodeGrant;
-import org.xdi.oxauth.model.common.AuthorizationGrant;
-import org.xdi.oxauth.model.common.AuthorizationGrantList;
-import org.xdi.oxauth.model.common.ClientCredentialsGrant;
-import org.xdi.oxauth.model.common.GrantType;
-import org.xdi.oxauth.model.common.IdToken;
-import org.xdi.oxauth.model.common.RefreshToken;
-import org.xdi.oxauth.model.common.ResourceOwnerPasswordCredentialsGrant;
-import org.xdi.oxauth.model.common.TokenType;
-import org.xdi.oxauth.model.common.User;
+import org.xdi.oxauth.model.common.*;
 import org.xdi.oxauth.model.configuration.AppConfiguration;
 import org.xdi.oxauth.model.error.ErrorResponseFactory;
 import org.xdi.oxauth.model.exception.InvalidJweException;
@@ -48,19 +29,30 @@ import org.xdi.oxauth.service.AuthenticationFilterService;
 import org.xdi.oxauth.service.AuthenticationService;
 import org.xdi.oxauth.service.GrantService;
 import org.xdi.oxauth.service.UserService;
+import org.xdi.oxauth.uma.service.UmaTokenService;
 import org.xdi.oxauth.util.ServerUtil;
 import org.xdi.util.StringHelper;
 import org.xdi.util.security.StringEncrypter;
 
-import com.google.common.base.Strings;
+import javax.inject.Inject;
+import javax.servlet.http.HttpServletRequest;
+import javax.ws.rs.Path;
+import javax.ws.rs.WebApplicationException;
+import javax.ws.rs.core.CacheControl;
+import javax.ws.rs.core.Response;
+import javax.ws.rs.core.Response.ResponseBuilder;
+import javax.ws.rs.core.SecurityContext;
+import java.security.SignatureException;
+import java.util.Arrays;
 
 /**
  * Provides interface for token REST web services
  *
+ * @author Yuriy Zabrovarnyy
  * @author Javier Rojas Blum
- * @version October 7, 2016
+ * @version August 23, 2017
  */
-@Path("/oxauth")
+@Path("/")
 public class TokenRestWebServiceImpl implements TokenRestWebService {
 
     @Inject
@@ -93,17 +85,26 @@ public class TokenRestWebServiceImpl implements TokenRestWebService {
     @Inject
     private AppConfiguration appConfiguration;
 
+    @Inject
+    private UmaTokenService umaTokenService;
+
     @Override
     public Response requestAccessToken(String grantType, String code,
                                        String redirectUri, String username, String password, String scope,
-                                       String assertion, String refreshToken, String oxAuthExchangeToken,
+                                       String assertion, String refreshToken,
                                        String clientId, String clientSecret, String codeVerifier,
+                                       String ticket, String claimToken, String claimTokenFormat, String pctCode, String rptCode,
                                        HttpServletRequest request, SecurityContext sec) {
         log.debug(
                 "Attempting to request access token: grantType = {}, code = {}, redirectUri = {}, username = {}, refreshToken = {}, " +
-                        "clientId = {}, ExtraParams = {}, isSecure = {}, codeVerifier = {}",
+                        "clientId = {}, ExtraParams = {}, isSecure = {}, codeVerifier = {}, ticket = {}",
                 grantType, code, redirectUri, username, refreshToken, clientId, request.getParameterMap(),
-                sec.isSecure(), codeVerifier);
+                sec.isSecure(), codeVerifier, ticket);
+
+        boolean isUma = StringUtils.isNotBlank(ticket);
+        if (isUma) {
+            return umaTokenService.requestRpt(grantType, ticket, claimToken, claimTokenFormat, pctCode, rptCode, scope, request);
+        }
 
         OAuth2AuditLog oAuth2AuditLog = new OAuth2AuditLog(ServerUtil.getIpAddress(request), Action.TOKEN_REQUEST);
         oAuth2AuditLog.setClientId(clientId);
@@ -114,30 +115,35 @@ public class TokenRestWebServiceImpl implements TokenRestWebService {
         ResponseBuilder builder = Response.ok();
 
         try {
-        	log.debug("Starting to validate request parameters");
+            log.debug("Starting to validate request parameters");
             if (!TokenParamsValidator.validateParams(grantType, code, redirectUri, username, password,
-                    scope, assertion, refreshToken, oxAuthExchangeToken)) {
-            	log.trace("Failed to validate request parameters");
+                    scope, assertion, refreshToken)) {
+                log.trace("Failed to validate request parameters");
                 builder = error(400, TokenErrorResponseType.INVALID_REQUEST);
             } else {
-            	log.trace("Request parameters are right");
+                log.trace("Request parameters are right");
                 GrantType gt = GrantType.fromString(grantType);
-            	log.debug("Grant type: '{}'", gt);
+                log.debug("Grant type: '{}'", gt);
 
-            	SessionClient sessionClient = identity.getSetSessionClient();
-            	Client client = null;
-            	if (sessionClient != null) {
-            		client = sessionClient.getClient();
-                	log.debug("Get sessionClient: '{}'", sessionClient);
+                SessionClient sessionClient = identity.getSessionClient();
+                Client client = null;
+                if (sessionClient != null) {
+                    client = sessionClient.getClient();
+                    log.debug("Get sessionClient: '{}'", sessionClient);
                 }
 
-            	if (client != null) {
-            		log.debug("Get client from session: '{}'", client.getClientId());
-            	}
+                if (client != null) {
+                    log.debug("Get client from session: '{}'", client.getClientId());
+                    if (client.isDisabled()) {
+                        return response(error(Response.Status.FORBIDDEN.getStatusCode(), TokenErrorResponseType.DISABLED_CLIENT), oAuth2AuditLog);
+                    }
+                } else {
+                    return response(error(401, TokenErrorResponseType.INVALID_GRANT), oAuth2AuditLog);
+                }
 
                 if (gt == GrantType.AUTHORIZATION_CODE) {
-                    if (client == null) {
-                        return response(error(400, TokenErrorResponseType.INVALID_GRANT));
+                    if (!TokenParamsValidator.validateGrantType(gt, client.getGrantTypes(), appConfiguration.getGrantTypesSupported())) {
+                        return response(error(400, TokenErrorResponseType.INVALID_GRANT), oAuth2AuditLog);
                     }
 
                     log.debug("Attempting to find authorizationCodeGrant by clinetId: '{}', code: '{}'", client.getClientId(), code);
@@ -145,7 +151,7 @@ public class TokenRestWebServiceImpl implements TokenRestWebService {
                     log.trace("AuthorizationCodeGrant : '{}'", authorizationCodeGrant);
 
                     if (authorizationCodeGrant != null) {
-                        validatePKCE(authorizationCodeGrant, codeVerifier);
+                        validatePKCE(authorizationCodeGrant, codeVerifier, oAuth2AuditLog);
 
                         authorizationCodeGrant.setIsCachedWithNoPersistence(false);
                         authorizationCodeGrant.save();
@@ -153,7 +159,12 @@ public class TokenRestWebServiceImpl implements TokenRestWebService {
                         AccessToken accToken = authorizationCodeGrant.createAccessToken();
                         log.debug("Issuing access token: {}", accToken.getCode());
 
-                        RefreshToken reToken = authorizationCodeGrant.createRefreshToken();
+                        RefreshToken reToken = null;
+                        if (client.getGrantTypes() != null
+                                && client.getGrantTypes().length > 0
+                                && Arrays.asList(client.getGrantTypes()).contains(GrantType.REFRESH_TOKEN)) {
+                            reToken = authorizationCodeGrant.createRefreshToken();
+                        }
 
                         if (scope != null && !scope.isEmpty()) {
                             scope = authorizationCodeGrant.checkScopesPolicy(scope);
@@ -163,7 +174,7 @@ public class TokenRestWebServiceImpl implements TokenRestWebService {
                         if (authorizationCodeGrant.getScopes().contains("openid")) {
                             String nonce = authorizationCodeGrant.getNonce();
                             boolean includeIdTokenClaims = Boolean.TRUE.equals(
-                            		appConfiguration.getLegacyIdTokenClaims());
+                                    appConfiguration.getLegacyIdTokenClaims());
                             idToken = authorizationCodeGrant.createIdToken(
                                     nonce, null, accToken, authorizationCodeGrant, includeIdTokenClaims);
                         }
@@ -185,8 +196,8 @@ public class TokenRestWebServiceImpl implements TokenRestWebService {
                         builder = error(400, TokenErrorResponseType.INVALID_GRANT);
                     }
                 } else if (gt == GrantType.REFRESH_TOKEN) {
-                    if (client == null) {
-                        return response(error(401, TokenErrorResponseType.INVALID_GRANT));
+                    if (!TokenParamsValidator.validateGrantType(gt, client.getGrantTypes(), appConfiguration.getGrantTypesSupported())) {
+                        return response(error(400, TokenErrorResponseType.INVALID_GRANT), oAuth2AuditLog);
                     }
 
                     AuthorizationGrant authorizationGrant = authorizationGrantList.getAuthorizationGrantByRefreshToken(client.getClientId(), refreshToken);
@@ -217,8 +228,8 @@ public class TokenRestWebServiceImpl implements TokenRestWebService {
                         builder = error(401, TokenErrorResponseType.INVALID_GRANT);
                     }
                 } else if (gt == GrantType.CLIENT_CREDENTIALS) {
-                    if (client == null) {
-                        return response(error(401, TokenErrorResponseType.INVALID_GRANT));
+                    if (!TokenParamsValidator.validateGrantType(gt, client.getGrantTypes(), appConfiguration.getGrantTypesSupported())) {
+                        return response(error(400, TokenErrorResponseType.INVALID_GRANT), oAuth2AuditLog);
                     }
 
                     ClientCredentialsGrant clientCredentialsGrant = authorizationGrantList.createClientCredentialsGrant(new User(), client); // TODO: fix the user arg
@@ -232,7 +243,7 @@ public class TokenRestWebServiceImpl implements TokenRestWebService {
                     IdToken idToken = null;
                     if (clientCredentialsGrant.getScopes().contains("openid")) {
                         boolean includeIdTokenClaims = Boolean.TRUE.equals(
-                        		appConfiguration.getLegacyIdTokenClaims());
+                                appConfiguration.getLegacyIdTokenClaims());
                         idToken = clientCredentialsGrant.createIdToken(
                                 null, null, null, clientCredentialsGrant, includeIdTokenClaims);
                     }
@@ -245,11 +256,9 @@ public class TokenRestWebServiceImpl implements TokenRestWebService {
                             scope,
                             idToken));
                 } else if (gt == GrantType.RESOURCE_OWNER_PASSWORD_CREDENTIALS) {
-                    if (client == null) {
-                        log.error("Invalid client", new RuntimeException("Client is empty"));
-                        return response(error(401, TokenErrorResponseType.INVALID_CLIENT));
+                    if (!TokenParamsValidator.validateGrantType(gt, client.getGrantTypes(), appConfiguration.getGrantTypesSupported())) {
+                        return response(error(400, TokenErrorResponseType.INVALID_GRANT), oAuth2AuditLog);
                     }
-
 
                     User user = null;
                     if (authenticationFilterService.isEnabled()) {
@@ -278,7 +287,7 @@ public class TokenRestWebServiceImpl implements TokenRestWebService {
                         IdToken idToken = null;
                         if (resourceOwnerPasswordCredentialsGrant.getScopes().contains("openid")) {
                             boolean includeIdTokenClaims = Boolean.TRUE.equals(
-                            		appConfiguration.getLegacyIdTokenClaims());
+                                    appConfiguration.getLegacyIdTokenClaims());
                             idToken = resourceOwnerPasswordCredentialsGrant.createIdToken(
                                     null, null, null, resourceOwnerPasswordCredentialsGrant, includeIdTokenClaims);
                         }
@@ -293,22 +302,6 @@ public class TokenRestWebServiceImpl implements TokenRestWebService {
                     } else {
                         log.error("Invalid user", new RuntimeException("User is empty"));
                         builder = error(401, TokenErrorResponseType.INVALID_CLIENT);
-                    }
-                } else if (gt == GrantType.EXTENSION) {
-                    builder = error(501, TokenErrorResponseType.INVALID_GRANT);
-                } else if (gt == GrantType.OXAUTH_EXCHANGE_TOKEN) {
-                    AuthorizationGrant authorizationGrant = authorizationGrantList.getAuthorizationGrantByAccessToken(oxAuthExchangeToken);
-
-                    if (authorizationGrant != null) {
-                        final AccessToken accessToken = authorizationGrant.createLongLivedAccessToken();
-
-                        oAuth2AuditLog.updateOAuth2AuditLog(authorizationGrant, true);
-                        builder.entity(getJSonResponse(accessToken,
-                                accessToken.getTokenType(),
-                                accessToken.getExpiresIn(),
-                                null, null, null));
-                    } else {
-                        builder = error(401, TokenErrorResponseType.INVALID_GRANT);
                     }
                 }
             }
@@ -331,11 +324,10 @@ public class TokenRestWebServiceImpl implements TokenRestWebService {
             log.error(e.getMessage(), e);
         }
 
-        applicationAuditLogger.sendMessage(oAuth2AuditLog);
-        return response(builder);
+        return response(builder, oAuth2AuditLog);
     }
 
-    private void validatePKCE(AuthorizationCodeGrant grant, String codeVerifier) {
+    private void validatePKCE(AuthorizationCodeGrant grant, String codeVerifier, OAuth2AuditLog oAuth2AuditLog) {
         log.trace("PKCE validation, code_verifier: {}, code_challenge: {}, method: {}",
                 codeVerifier, grant.getCodeChallenge(), grant.getCodeChallengeMethod());
 
@@ -346,16 +338,19 @@ public class TokenRestWebServiceImpl implements TokenRestWebService {
         if (!CodeVerifier.matched(grant.getCodeChallenge(), grant.getCodeChallengeMethod(), codeVerifier)) {
             log.error("PKCE check fails. Code challenge does not match to request code verifier, " +
                     "grantId:" + grant.getGrantId() + ", codeVerifier: " + codeVerifier);
-            throw new WebApplicationException(response(error(401, TokenErrorResponseType.INVALID_GRANT)));
+            throw new WebApplicationException(response(error(401, TokenErrorResponseType.INVALID_GRANT), oAuth2AuditLog));
         }
     }
 
-    private Response response(ResponseBuilder builder) {
+    private Response response(ResponseBuilder builder, OAuth2AuditLog oAuth2AuditLog) {
         CacheControl cacheControl = new CacheControl();
         cacheControl.setNoTransform(false);
         cacheControl.setNoStore(true);
         builder.cacheControl(cacheControl);
         builder.header("Pragma", "no-cache");
+
+        applicationAuditLogger.sendMessage(oAuth2AuditLog);
+
         return builder.build();
     }
 

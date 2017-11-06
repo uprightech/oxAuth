@@ -5,11 +5,6 @@
  */
 package org.xdi.oxauth.model.fido.u2f;
 
-import java.io.Serializable;
-import java.security.cert.CertificateEncodingException;
-import java.security.cert.X509Certificate;
-import java.util.Date;
-
 import org.gluu.site.ldap.persistence.annotation.LdapAttribute;
 import org.gluu.site.ldap.persistence.annotation.LdapEntry;
 import org.gluu.site.ldap.persistence.annotation.LdapJsonObject;
@@ -19,6 +14,11 @@ import org.xdi.oxauth.exception.fido.u2f.InvalidDeviceCounterException;
 import org.xdi.oxauth.model.fido.u2f.exception.BadInputException;
 import org.xdi.oxauth.model.fido.u2f.protocol.DeviceData;
 import org.xdi.oxauth.model.util.Base64Util;
+
+import java.io.Serializable;
+import java.security.cert.CertificateEncodingException;
+import java.security.cert.X509Certificate;
+import java.util.Date;
 
 /**
  * U2F Device registration
@@ -40,9 +40,16 @@ public class DeviceRegistration extends BaseEntry implements Serializable {
 	@LdapAttribute
 	private String description;
 
+	@LdapAttribute(name = "oxNickName")
+	private String nickname;
+
     @LdapJsonObject
     @LdapAttribute(name = "oxDeviceRegistrationConf")
 	private DeviceRegistrationConfiguration deviceRegistrationConfiguration;
+
+    @LdapJsonObject
+    @LdapAttribute(name = "oxDeviceNotificationConf")
+	private String deviceNotificationConf;
 
     @LdapAttribute(name = "oxCounter")
 	private long counter;
@@ -118,12 +125,28 @@ public class DeviceRegistration extends BaseEntry implements Serializable {
 		this.description = description;
 	}
 
+	public String getNickname() {
+		return nickname;
+	}
+
+	public void setNickname(String nickname) {
+		this.nickname = nickname;
+	}
+
 	public DeviceRegistrationConfiguration getDeviceRegistrationConfiguration() {
 		return deviceRegistrationConfiguration;
 	}
 
 	public void setDeviceRegistrationConfiguration(DeviceRegistrationConfiguration deviceRegistrationConfiguration) {
 		this.deviceRegistrationConfiguration = deviceRegistrationConfiguration;
+	}
+
+	public String getDeviceNotificationConf() {
+		return deviceNotificationConf;
+	}
+
+	public void setDeviceNotificationConf(String deviceNotificationConf) {
+		this.deviceNotificationConf = deviceNotificationConf;
 	}
 
 	public long getCounter() {

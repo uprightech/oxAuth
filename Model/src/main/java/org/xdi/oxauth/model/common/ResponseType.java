@@ -6,6 +6,8 @@
 
 package org.xdi.oxauth.model.common;
 
+import org.codehaus.jackson.annotate.JsonCreator;
+import org.codehaus.jackson.annotate.JsonValue;
 import org.gluu.site.ldap.persistence.annotation.LdapEnum;
 
 import java.util.ArrayList;
@@ -27,7 +29,7 @@ import java.util.Map;
  * </p>
  *
  * @author Javier Rojas Blum
- * @version June 26, 2017
+ * @version July 18, 2017
  */
 public enum ResponseType implements HasParamName, LdapEnum {
 
@@ -35,17 +37,14 @@ public enum ResponseType implements HasParamName, LdapEnum {
      * Used for the authorization code grant type.
      */
     CODE("code", "Authorization Code Grant Type"),
-
     /**
      * Used for the implicit grant type.
      */
     TOKEN("token", "Implicit Grant Type"),
-
     /**
      * Include an ID Token in the authorization response.
      */
     ID_TOKEN("id_token", "ID Token"),
-
     /**
      * Used to request approval from end user for the IDP IFrame based implicit flow.
      */
@@ -73,6 +72,7 @@ public enum ResponseType implements HasParamName, LdapEnum {
      * @param param The response_type parameter.
      * @return The corresponding response type if found, otherwise <code>null</code>.
      */
+    @JsonCreator
     public static ResponseType fromString(String param) {
         return getByValue(param);
     }
@@ -127,6 +127,10 @@ public enum ResponseType implements HasParamName, LdapEnum {
         return responseTypes;
     }
 
+    public static boolean isImplicitFlow(String responseTypes) {
+        return !responseTypes.contains("code") && (responseTypes.contains("id_token") || responseTypes.contains("token"));
+    }
+
     public static String[] toStringArray(ResponseType[] responseTypes) {
         if (responseTypes == null) {
             return null;
@@ -153,6 +157,7 @@ public enum ResponseType implements HasParamName, LdapEnum {
      * name for the response_type parameter.
      */
     @Override
+    @JsonValue
     public String toString() {
         return value;
     }

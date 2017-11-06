@@ -20,9 +20,11 @@ import org.xdi.oxauth.model.util.Util;
 import org.xdi.oxauth.service.ClientService;
 import org.xdi.oxauth.service.GrantService;
 import org.xdi.oxauth.service.UserService;
+import org.xdi.oxauth.util.ServerUtil;
+import org.xdi.oxauth.util.TokenHashUtil;
 import org.xdi.service.CacheService;
 
-import javax.enterprise.context.RequestScoped;
+import javax.enterprise.context.Dependent;
 import javax.enterprise.inject.Instance;
 import javax.inject.Inject;
 import java.util.ArrayList;
@@ -34,9 +36,9 @@ import java.util.List;
  * Component to hold in memory authorization grant objects.
  *
  * @author Javier Rojas Blum
- * @version June 26, 2017
+ * @version September 6, 2017
  */
-@RequestScoped
+@Dependent
 public class AuthorizationGrantList implements IAuthorizationGrantList {
 
     @Inject
@@ -82,7 +84,7 @@ public class AuthorizationGrantList implements IAuthorizationGrantList {
         AuthorizationCodeGrant grant = grantInstance.select(AuthorizationCodeGrant.class).get();
         grant.init(user, client, authenticationTime);
 
-        MemcachedGrant memcachedGrant = new MemcachedGrant(grant);
+        CacheGrant memcachedGrant = new CacheGrant(grant, appConfiguration);
         cacheService.put(Integer.toString(grant.getAuthorizationCode().getExpiresIn()), memcachedGrant.cacheKey(), memcachedGrant);
         log.trace("Put authorization grant in cache, code: " + grant.getAuthorizationCode().getCode() + ", clientId: " + grant.getClientId());
         return grant;
@@ -122,17 +124,20 @@ public class AuthorizationGrantList implements IAuthorizationGrantList {
 
     @Override
     public AuthorizationCodeGrant getAuthorizationCodeGrant(String clientId, String authorizationCode) {
-        Object cachedGrant = cacheService.get(null, MemcachedGrant.cacheKey(clientId, authorizationCode));
+        Object cachedGrant = cacheService.get(null, CacheGrant.cacheKey(clientId, authorizationCode, null));
         if (cachedGrant == null) {
             // retry one time : sometimes during high load cache client may be not fast enough
-            cachedGrant = cacheService.get(null, MemcachedGrant.cacheKey(clientId, authorizationCode));
+            cachedGrant = cacheService.get(null, CacheGrant.cacheKey(clientId, authorizationCode, null));
             log.trace("Failed to fetch authorization grant from cache, code: " + authorizationCode + ", clientId: " + clientId);
         }
-        return cachedGrant instanceof MemcachedGrant ? ((MemcachedGrant) cachedGrant).asCodeGrant(grantInstance) : null;
+        return cachedGrant instanceof CacheGrant ? ((CacheGrant) cachedGrant).asCodeGrant(grantInstance) : null;
     }
 
     @Override
     public AuthorizationGrant getAuthorizationGrantByRefreshToken(String clientId, String refreshTokenCode) {
+        if (!ServerUtil.isTrue(appConfiguration.getPersistRefreshTokenInLdap())) {
+            return asGrant((TokenLdap) cacheService.get(null, TokenHashUtil.getHashedToken(refreshTokenCode)));
+        }
         return load(clientId, refreshTokenCode);
     }
 
@@ -140,13 +145,14 @@ public class AuthorizationGrantList implements IAuthorizationGrantList {
     public List<AuthorizationGrant> getAuthorizationGrant(String clientId) {
         final List<AuthorizationGrant> result = new ArrayList<AuthorizationGrant>();
         try {
-            final List<TokenLdap> entries = grantService.getGrantsOfClient(clientId);
-            if (entries != null && !entries.isEmpty()) {
-                for (TokenLdap t : entries) {
-                    final AuthorizationGrant grant = asGrant(t);
-                    if (grant != null) {
-                        result.add(grant);
-                    }
+            final List<TokenLdap> entries = new ArrayList<TokenLdap>();
+            entries.addAll(grantService.getGrantsOfClient(clientId));
+            entries.addAll(grantService.getCacheClientTokensEntries(clientId));
+
+            for (TokenLdap t : entries) {
+                final AuthorizationGrant grant = asGrant(t);
+                if (grant != null) {
+                    result.add(grant);
                 }
             }
         } catch (Exception e) {
@@ -157,7 +163,11 @@ public class AuthorizationGrantList implements IAuthorizationGrantList {
 
     @Override
     public AuthorizationGrant getAuthorizationGrantByAccessToken(String accessToken) {
-        final TokenLdap tokenLdap = grantService.getGrantsByCode(accessToken);
+        return getAuthorizationGrantByAccessToken(accessToken, false);
+    }
+
+    public AuthorizationGrant getAuthorizationGrantByAccessToken(String accessToken, boolean onlyFromCache) {
+        final TokenLdap tokenLdap = grantService.getGrantsByCode(accessToken, onlyFromCache);
         if (tokenLdap != null && (tokenLdap.getTokenTypeEnum() == org.xdi.oxauth.model.ldap.TokenType.ACCESS_TOKEN || tokenLdap.getTokenTypeEnum() == org.xdi.oxauth.model.ldap.TokenType.LONG_LIVED_ACCESS_TOKEN)) {
             return asGrant(tokenLdap);
         }
@@ -166,7 +176,7 @@ public class AuthorizationGrantList implements IAuthorizationGrantList {
 
     @Override
     public AuthorizationGrant getAuthorizationGrantByIdToken(String idToken) {
-        TokenLdap tokenLdap = grantService.getGrantsByCode(idToken);
+        final TokenLdap tokenLdap = grantService.getGrantsByCode(idToken);
         if (tokenLdap != null && (tokenLdap.getTokenTypeEnum() == org.xdi.oxauth.model.ldap.TokenType.ID_TOKEN)) {
             return asGrant(tokenLdap);
         }
@@ -243,6 +253,7 @@ public class AuthorizationGrantList implements IAuthorizationGrantList {
                 final String jwtRequest = tokenLdap.getJwtRequest();
                 final String authMode = tokenLdap.getAuthMode();
                 final String sessionDn = tokenLdap.getSessionDn();
+                final String claims = tokenLdap.getClaims();
 
                 result.setNonce(nonce);
                 result.setTokenLdap(tokenLdap);
@@ -264,6 +275,7 @@ public class AuthorizationGrantList implements IAuthorizationGrantList {
 
                 result.setAcrValues(authMode);
                 result.setSessionDn(sessionDn);
+                result.setClaims(claims);
 
                 if (tokenLdap.getTokenTypeEnum() != null) {
                     switch (tokenLdap.getTokenTypeEnum()) {

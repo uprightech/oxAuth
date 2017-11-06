@@ -12,6 +12,7 @@ import org.codehaus.jettison.json.JSONObject;
 import org.gluu.site.ldap.persistence.exception.EntryPersistenceException;
 import org.slf4j.Logger;
 import org.xdi.model.GluuAttribute;
+import org.xdi.model.GluuAttributeDataType;
 import org.xdi.oxauth.audit.ApplicationAuditLogger;
 import org.xdi.oxauth.model.audit.Action;
 import org.xdi.oxauth.model.audit.OAuth2AuditLog;
@@ -57,15 +58,17 @@ import javax.ws.rs.core.SecurityContext;
 import java.io.UnsupportedEncodingException;
 import java.security.PublicKey;
 import java.security.SignatureException;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
 import java.util.*;
 
 /**
  * Provides interface for User Info REST web services
  *
  * @author Javier Rojas Blum
- * @version May 12, 2017
+ * @version October 26, 2017
  */
-@Path("/oxauth")
+@Path("/")
 public class UserInfoRestWebServiceImpl implements UserInfoRestWebService {
 
     @Inject
@@ -236,16 +239,31 @@ public class UserInfoRestWebServiceImpl implements UserInfoRestWebService {
 
                     String claimName = gluuAttribute.getOxAuthClaimName();
                     String ldapName = gluuAttribute.getName();
-                    String attributeValue = null;
+                    Object attributeValue = null;
 
                     if (StringUtils.isNotBlank(claimName) && StringUtils.isNotBlank(ldapName)) {
                         if (ldapName.equals("uid")) {
                             attributeValue = user.getUserId();
                         } else {
-                            attributeValue = user.getAttribute(gluuAttribute.getName());
+                            attributeValue = user.getAttribute(gluuAttribute.getName(), true);
                         }
 
-                        jwt.getClaims().setClaim(claimName, attributeValue);
+                        if (attributeValue != null) {
+                            if (attributeValue instanceof JSONArray) {
+                                JSONArray jsonArray = (JSONArray) attributeValue;
+                                List<String> values = new ArrayList<String>();
+                                for (int i = 0; i < jsonArray.length(); i++) {
+                                    String value = jsonArray.optString(i);
+                                    if (value != null) {
+                                        values.add(value);
+                                    }
+                                }
+                                jwt.getClaims().setClaim(claimName, values);
+                            } else {
+                                String value = attributeValue.toString();
+                                jwt.getClaims().setClaim(claimName, value);
+                            }
+                        }
                     }
                 }
             }
@@ -272,7 +290,7 @@ public class UserInfoRestWebServiceImpl implements UserInfoRestWebService {
                             }
                             jwt.getClaims().setClaim(claim.getName(), values);
                         } else {
-                            String value = (String) attribute;
+                            String value = attribute.toString();
                             jwt.getClaims().setClaim(claim.getName(), value);
                         }
                     }
@@ -350,16 +368,31 @@ public class UserInfoRestWebServiceImpl implements UserInfoRestWebService {
 
                     String claimName = gluuAttribute.getOxAuthClaimName();
                     String ldapName = gluuAttribute.getName();
-                    String attributeValue = null;
+                    Object attributeValue = null;
 
                     if (StringUtils.isNotBlank(claimName) && StringUtils.isNotBlank(ldapName)) {
                         if (ldapName.equals("uid")) {
                             attributeValue = user.getUserId();
                         } else {
-                            attributeValue = user.getAttribute(gluuAttribute.getName());
+                            attributeValue = user.getAttribute(gluuAttribute.getName(), true);
                         }
 
-                        jwe.getClaims().setClaim(claimName, attributeValue);
+                        if (attributeValue != null) {
+                            if (attributeValue instanceof JSONArray) {
+                                JSONArray jsonArray = (JSONArray) attributeValue;
+                                List<String> values = new ArrayList<String>();
+                                for (int i = 0; i < jsonArray.length(); i++) {
+                                    String value = jsonArray.optString(i);
+                                    if (value != null) {
+                                        values.add(value);
+                                    }
+                                }
+                                jwe.getClaims().setClaim(claimName, values);
+                            } else {
+                                String value = attributeValue.toString();
+                                jwe.getClaims().setClaim(claimName, value);
+                            }
+                        }
                     }
                 }
             }
@@ -386,7 +419,7 @@ public class UserInfoRestWebServiceImpl implements UserInfoRestWebService {
                             }
                             jwe.getClaims().setClaim(claim.getName(), values);
                         } else {
-                            String value = (String) attribute;
+                            String value = attribute.toString();
                             jwe.getClaims().setClaim(claim.getName(), value);
                         }
                     }
@@ -499,6 +532,10 @@ public class UserInfoRestWebServiceImpl implements UserInfoRestWebService {
 
                     if (value instanceof List) {
                         jsonWebResponse.getClaims().setClaim(key, (List<String>) value);
+                    } else if (value instanceof Boolean) {
+                        jsonWebResponse.getClaims().setClaim(key, (Boolean) value);
+                    } else if (value instanceof Date) {
+                        jsonWebResponse.getClaims().setClaim(key, ((Date) value).getTime());
                     } else {
                         jsonWebResponse.getClaims().setClaim(key, (String) value);
                     }
@@ -506,6 +543,40 @@ public class UserInfoRestWebServiceImpl implements UserInfoRestWebService {
             }
 
             jsonWebResponse.getClaims().setSubjectIdentifier(authorizationGrant.getUser().getAttribute("inum"));
+        }
+
+        if (authorizationGrant.getClaims() != null) {
+            JSONObject claimsObj = new JSONObject(authorizationGrant.getClaims());
+            if (claimsObj.has("userinfo")) {
+                JSONObject userInfoObj = claimsObj.getJSONObject("userinfo");
+                for (Iterator<String> it = userInfoObj.keys(); it.hasNext(); ) {
+                    String claimName = it.next();
+                    boolean optional = true; // ClaimValueType.OPTIONAL.equals(claim.getClaimValue().getClaimValueType());
+                    GluuAttribute gluuAttribute = attributeService.getByClaimName(claimName);
+
+                    if (gluuAttribute != null) {
+                        String ldapClaimName = gluuAttribute.getName();
+
+                        Object attribute = user.getAttribute(ldapClaimName, optional);
+                        if (attribute != null) {
+                            if (attribute instanceof JSONArray) {
+                                JSONArray jsonArray = (JSONArray) attribute;
+                                List<String> values = new ArrayList<String>();
+                                for (int i = 0; i < jsonArray.length(); i++) {
+                                    String value = jsonArray.optString(i);
+                                    if (value != null) {
+                                        values.add(value);
+                                    }
+                                }
+                                jsonWebResponse.getClaims().setClaim(claimName, values);
+                            } else {
+                                String value = (String) attribute;
+                                jsonWebResponse.getClaims().setClaim(claimName, value);
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         if (authorizationGrant.getJwtAuthorizationRequest() != null
@@ -574,7 +645,7 @@ public class UserInfoRestWebServiceImpl implements UserInfoRestWebService {
         return jsonWebResponse.toString();
     }
 
-    public Map<String, Object> getClaims(User user, Scope scope) throws InvalidClaimException {
+    public Map<String, Object> getClaims(User user, Scope scope) throws InvalidClaimException, ParseException {
         Map<String, Object> claims = new HashMap<String, Object>();
 
         if (scope != null && scope.getOxAuthClaims() != null) {
@@ -588,6 +659,11 @@ public class UserInfoRestWebServiceImpl implements UserInfoRestWebService {
                 if (StringUtils.isNotBlank(claimName) && StringUtils.isNotBlank(ldapName)) {
                     if (ldapName.equals("uid")) {
                         attribute = user.getUserId();
+                    } else if (GluuAttributeDataType.BOOLEAN.equals(gluuAttribute.getDataType())) {
+                        attribute = Boolean.parseBoolean((String) user.getAttribute(gluuAttribute.getName(), true));
+                    } else if (GluuAttributeDataType.DATE.equals(gluuAttribute.getDataType())) {
+                        SimpleDateFormat format = new SimpleDateFormat("yyyyMMddHHmmss.SSS'Z'");
+                        attribute = format.parse(user.getAttribute(gluuAttribute.getName(), true).toString());
                     } else {
                         attribute = user.getAttribute(gluuAttribute.getName(), true);
                     }

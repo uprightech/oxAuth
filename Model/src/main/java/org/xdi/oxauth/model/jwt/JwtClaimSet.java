@@ -6,6 +6,7 @@
 
 package org.xdi.oxauth.model.jwt;
 
+import com.google.common.collect.Lists;
 import org.codehaus.jettison.json.JSONArray;
 import org.codehaus.jettison.json.JSONException;
 import org.codehaus.jettison.json.JSONObject;
@@ -19,7 +20,7 @@ import java.util.*;
 
 /**
  * @author Javier Rojas Blum
- * @version May 3, 2017
+ * @version October 26, 2017
  */
 public abstract class JwtClaimSet {
 
@@ -39,8 +40,16 @@ public abstract class JwtClaimSet {
         load(base64JsonObject);
     }
 
+    public Set<String> keys() {
+        return claims.keySet();
+    }
+
     public Object getClaim(String key) {
         return claims.get(key);
+    }
+
+    public boolean hasClaim(String key) {
+        return getClaim(key) != null;
     }
 
     public String getClaimAsString(String key) {
@@ -161,6 +170,39 @@ public abstract class JwtClaimSet {
         }
     }
 
+    public void setClaimObject(String key, Object value, boolean overrideValue) {
+        if (value == null) {
+            setNullClaim(key);
+        } else if (value instanceof String) {
+            if (overrideValue) {
+                setClaim(key, (String) value);
+            } else {
+                Object currentValue = getClaim(key);
+                if (currentValue != null) {
+                    setClaim(key, Lists.newArrayList(currentValue.toString(), (String) value));
+                } else {
+                    setClaim(key, (String) value);
+                }
+            }
+        } else if (value instanceof Date) {
+            setClaim(key, (Date) value);
+        } else if (value instanceof Boolean) {
+            setClaim(key, (Boolean) value);
+        } else if (value instanceof Integer) {
+            setClaim(key, (Integer) value);
+        } else if (value instanceof Long) {
+            setClaim(key, (Long) value);
+        } else if (value instanceof Character) {
+            setClaim(key, (Character) value);
+        } else if (value instanceof List) {
+            setClaim(key, (List) value);
+        } else if (value instanceof JwtSubClaimObject) {
+            setClaim(key, (JwtSubClaimObject) value);
+        } else {
+            throw new UnsupportedOperationException("Claim value is not supported, key: " + key + ", value :" + value);
+        }
+    }
+
     public void setNullClaim(String key) {
         claims.put(key, null);
     }
@@ -212,6 +254,13 @@ public abstract class JwtClaimSet {
                 } else if (claim.getValue() instanceof JwtSubClaimObject) {
                     JwtSubClaimObject subClaimObject = (JwtSubClaimObject) claim.getValue();
                     jsonObject.put(subClaimObject.getName(), subClaimObject.toJsonObject());
+                } else if (claim.getValue() instanceof List) {
+                    List<String> claimObjectList = (List<String>) claim.getValue();
+                    JSONArray claimsJSONArray = new JSONArray();
+                    for (String claimObj : claimObjectList) {
+                        claimsJSONArray.put(claimObj);
+                    }
+                    jsonObject.put(claim.getKey(), claimsJSONArray);
                 } else {
                     jsonObject.put(claim.getKey(), claim.getValue());
                 }

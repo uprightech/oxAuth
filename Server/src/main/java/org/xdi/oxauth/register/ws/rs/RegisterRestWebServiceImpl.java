@@ -6,66 +6,6 @@
 
 package org.xdi.oxauth.register.ws.rs;
 
-import static org.xdi.oxauth.model.register.RegisterRequestParam.APPLICATION_TYPE;
-import static org.xdi.oxauth.model.register.RegisterRequestParam.CLIENT_NAME;
-import static org.xdi.oxauth.model.register.RegisterRequestParam.CLIENT_URI;
-import static org.xdi.oxauth.model.register.RegisterRequestParam.CONTACTS;
-import static org.xdi.oxauth.model.register.RegisterRequestParam.DEFAULT_ACR_VALUES;
-import static org.xdi.oxauth.model.register.RegisterRequestParam.DEFAULT_MAX_AGE;
-import static org.xdi.oxauth.model.register.RegisterRequestParam.FRONT_CHANNEL_LOGOUT_SESSION_REQUIRED;
-import static org.xdi.oxauth.model.register.RegisterRequestParam.FRONT_CHANNEL_LOGOUT_URI;
-import static org.xdi.oxauth.model.register.RegisterRequestParam.GRANT_TYPES;
-import static org.xdi.oxauth.model.register.RegisterRequestParam.ID_TOKEN_ENCRYPTED_RESPONSE_ALG;
-import static org.xdi.oxauth.model.register.RegisterRequestParam.ID_TOKEN_ENCRYPTED_RESPONSE_ENC;
-import static org.xdi.oxauth.model.register.RegisterRequestParam.ID_TOKEN_SIGNED_RESPONSE_ALG;
-import static org.xdi.oxauth.model.register.RegisterRequestParam.INITIATE_LOGIN_URI;
-import static org.xdi.oxauth.model.register.RegisterRequestParam.JWKS;
-import static org.xdi.oxauth.model.register.RegisterRequestParam.JWKS_URI;
-import static org.xdi.oxauth.model.register.RegisterRequestParam.LOGO_URI;
-import static org.xdi.oxauth.model.register.RegisterRequestParam.POLICY_URI;
-import static org.xdi.oxauth.model.register.RegisterRequestParam.POST_LOGOUT_REDIRECT_URIS;
-import static org.xdi.oxauth.model.register.RegisterRequestParam.REDIRECT_URIS;
-import static org.xdi.oxauth.model.register.RegisterRequestParam.REQUEST_OBJECT_ENCRYPTION_ALG;
-import static org.xdi.oxauth.model.register.RegisterRequestParam.REQUEST_OBJECT_ENCRYPTION_ENC;
-import static org.xdi.oxauth.model.register.RegisterRequestParam.REQUEST_OBJECT_SIGNING_ALG;
-import static org.xdi.oxauth.model.register.RegisterRequestParam.REQUEST_URIS;
-import static org.xdi.oxauth.model.register.RegisterRequestParam.REQUIRE_AUTH_TIME;
-import static org.xdi.oxauth.model.register.RegisterRequestParam.RESPONSE_TYPES;
-import static org.xdi.oxauth.model.register.RegisterRequestParam.SECTOR_IDENTIFIER_URI;
-import static org.xdi.oxauth.model.register.RegisterRequestParam.SUBJECT_TYPE;
-import static org.xdi.oxauth.model.register.RegisterRequestParam.TOKEN_ENDPOINT_AUTH_METHOD;
-import static org.xdi.oxauth.model.register.RegisterRequestParam.TOKEN_ENDPOINT_AUTH_SIGNING_ALG;
-import static org.xdi.oxauth.model.register.RegisterRequestParam.TOS_URI;
-import static org.xdi.oxauth.model.register.RegisterRequestParam.USERINFO_ENCRYPTED_RESPONSE_ALG;
-import static org.xdi.oxauth.model.register.RegisterRequestParam.USERINFO_ENCRYPTED_RESPONSE_ENC;
-import static org.xdi.oxauth.model.register.RegisterRequestParam.USERINFO_SIGNED_RESPONSE_ALG;
-import static org.xdi.oxauth.model.register.RegisterResponseParam.CLIENT_ID_ISSUED_AT;
-import static org.xdi.oxauth.model.register.RegisterResponseParam.CLIENT_SECRET;
-import static org.xdi.oxauth.model.register.RegisterResponseParam.CLIENT_SECRET_EXPIRES_AT;
-import static org.xdi.oxauth.model.register.RegisterResponseParam.REGISTRATION_CLIENT_URI;
-import static org.xdi.oxauth.model.util.StringUtils.toList;
-
-import java.net.URI;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Calendar;
-import java.util.Date;
-import java.util.GregorianCalendar;
-import java.util.HashSet;
-import java.util.List;
-import java.util.TimeZone;
-import java.util.UUID;
-
-import javax.inject.Inject;
-import javax.servlet.http.HttpServletRequest;
-import javax.ws.rs.HeaderParam;
-import javax.ws.rs.Path;
-import javax.ws.rs.WebApplicationException;
-import javax.ws.rs.core.CacheControl;
-import javax.ws.rs.core.Context;
-import javax.ws.rs.core.Response;
-import javax.ws.rs.core.SecurityContext;
-
 import org.apache.commons.lang.StringUtils;
 import org.codehaus.jettison.json.JSONArray;
 import org.codehaus.jettison.json.JSONException;
@@ -77,10 +17,7 @@ import org.xdi.oxauth.audit.ApplicationAuditLogger;
 import org.xdi.oxauth.client.RegisterRequest;
 import org.xdi.oxauth.model.audit.Action;
 import org.xdi.oxauth.model.audit.OAuth2AuditLog;
-import org.xdi.oxauth.model.common.AuthenticationMethod;
-import org.xdi.oxauth.model.common.ResponseType;
-import org.xdi.oxauth.model.common.Scope;
-import org.xdi.oxauth.model.common.SubjectType;
+import org.xdi.oxauth.model.common.*;
 import org.xdi.oxauth.model.config.StaticConfiguration;
 import org.xdi.oxauth.model.configuration.AppConfiguration;
 import org.xdi.oxauth.model.crypto.signature.SignatureAlgorithm;
@@ -101,15 +38,31 @@ import org.xdi.oxauth.util.ServerUtil;
 import org.xdi.util.StringHelper;
 import org.xdi.util.security.StringEncrypter;
 
+import javax.inject.Inject;
+import javax.servlet.http.HttpServletRequest;
+import javax.ws.rs.HeaderParam;
+import javax.ws.rs.Path;
+import javax.ws.rs.WebApplicationException;
+import javax.ws.rs.core.CacheControl;
+import javax.ws.rs.core.Context;
+import javax.ws.rs.core.Response;
+import javax.ws.rs.core.SecurityContext;
+import java.net.URI;
+import java.util.*;
+
+import static org.xdi.oxauth.model.register.RegisterRequestParam.*;
+import static org.xdi.oxauth.model.register.RegisterResponseParam.*;
+import static org.xdi.oxauth.model.util.StringUtils.toList;
+
 /**
  * Implementation for register REST web services.
  *
  * @author Javier Rojas Blum
  * @author Yuriy Zabrovarnyy
  * @author Yuriy Movchan
- * @version October 31, 2016
+ * @version October 26, 2017
  */
-@Path("/oxauth")
+@Path("/")
 public class RegisterRestWebServiceImpl implements RegisterRestWebService {
 
     @Inject
@@ -132,7 +85,7 @@ public class RegisterRestWebServiceImpl implements RegisterRestWebService {
 
     @Inject
     private ExternalDynamicClientRegistrationService externalDynamicClientRegistrationService;
-    
+
     @Inject
     private RegisterParamsValidator registerParamsValidator;
 
@@ -177,82 +130,85 @@ public class RegisterRestWebServiceImpl implements RegisterRestWebService {
                     r.setIdTokenSignedResponseAlg(SignatureAlgorithm.fromString(appConfiguration.getDefaultSignatureAlgorithm()));
                 }
 
-                if (r.getIdTokenSignedResponseAlg() != SignatureAlgorithm.NONE) {
-                    if (registerParamsValidator.validateParamsClientRegister(r.getApplicationType(), r.getSubjectType(),
+                if (r.getClaimsRedirectUris() != null && !r.getClaimsRedirectUris().isEmpty()) {
+                    if (!registerParamsValidator.validateRedirectUris(r.getApplicationType(), r.getSubjectType(), r.getClaimsRedirectUris(), r.getSectorIdentifierUri())) {
+                        log.error("Value of one or more claims_redirect_uris is invalid, claims_redirect_uris: " + r.getClaimsRedirectUris());
+                        throw new WebApplicationException(Response.status(Response.Status.BAD_REQUEST)
+                                .entity(errorResponseFactory.getErrorAsJson(RegisterErrorResponseType.INVALID_CLAIMS_REDIRECT_URI))
+                                .build());
+                    }
+                }
+
+                if (registerParamsValidator.validateParamsClientRegister(r.getApplicationType(), r.getSubjectType(),
+                        r.getRedirectUris(), r.getSectorIdentifierUri())) {
+                    if (!registerParamsValidator.validateRedirectUris(r.getApplicationType(), r.getSubjectType(),
                             r.getRedirectUris(), r.getSectorIdentifierUri())) {
-                        if (!registerParamsValidator.validateRedirectUris(r.getApplicationType(), r.getSubjectType(),
-                                r.getRedirectUris(), r.getSectorIdentifierUri())) {
-                            builder = Response.status(Response.Status.BAD_REQUEST.getStatusCode());
-                            builder.entity(errorResponseFactory.getErrorAsJson(RegisterErrorResponseType.INVALID_REDIRECT_URI));
-                        } else {
-                            registerParamsValidator.validateLogoutUri(r.getFrontChannelLogoutUris(), r.getRedirectUris(), errorResponseFactory);
+                        builder = Response.status(Response.Status.BAD_REQUEST.getStatusCode());
+                        builder.entity(errorResponseFactory.getErrorAsJson(RegisterErrorResponseType.INVALID_REDIRECT_URI));
+                    } else {
+                        registerParamsValidator.validateLogoutUri(r.getFrontChannelLogoutUris(), r.getRedirectUris(), errorResponseFactory);
 
-                            String clientsBaseDN = staticConfiguration.getBaseDn().getClients();
+                        String clientsBaseDN = staticConfiguration.getBaseDn().getClients();
 
-                            String inum = inumService.generateClientInum();
-                            String generatedClientSecret = UUID.randomUUID().toString();
+                        String inum = inumService.generateClientInum();
+                        String generatedClientSecret = UUID.randomUUID().toString();
 
-                            final Client client = new Client();
-                            client.setDn("inum=" + inum + "," + clientsBaseDN);
-                            client.setClientId(inum);
-                            client.setClientSecret(clientService.encryptSecret(generatedClientSecret));
-                            client.setRegistrationAccessToken(HandleTokenFactory.generateHandleToken());
+                        final Client client = new Client();
+                        client.setDn("inum=" + inum + "," + clientsBaseDN);
+                        client.setClientId(inum);
+                        client.setClientSecret(clientService.encryptSecret(generatedClientSecret));
+                        client.setRegistrationAccessToken(HandleTokenFactory.generateHandleToken());
 
-                            final Calendar calendar = new GregorianCalendar(TimeZone.getTimeZone("UTC"));
-                            client.setClientIdIssuedAt(calendar.getTime());
+                        final Calendar calendar = new GregorianCalendar(TimeZone.getTimeZone("UTC"));
+                        client.setClientIdIssuedAt(calendar.getTime());
 
-                            if (appConfiguration.getDynamicRegistrationExpirationTime() > 0) {
-                                calendar.add(Calendar.SECOND, appConfiguration.getDynamicRegistrationExpirationTime());
-                                client.setClientSecretExpiresAt(calendar.getTime());
-                            }
+                        if (appConfiguration.getDynamicRegistrationExpirationTime() > 0) {
+                            calendar.add(Calendar.SECOND, appConfiguration.getDynamicRegistrationExpirationTime());
+                            client.setClientSecretExpiresAt(calendar.getTime());
+                        }
 
-                            if (StringUtils.isBlank(r.getClientName()) && r.getRedirectUris() != null && !r.getRedirectUris().isEmpty()) {
-                                try {
-                                    URI redUri = new URI(r.getRedirectUris().get(0));
-                                    client.setClientName(redUri.getHost());
-                                } catch (Exception e) {
-                                    //ignore
-                                    log.error(e.getMessage(), e);
-                                    client.setClientName("Unknown");
-                                }
-                            }
-
-                            updateClientFromRequestObject(client, r);
-
-                            boolean registerClient = true;
-                            if (externalDynamicClientRegistrationService.isEnabled()) {
-                            	registerClient = externalDynamicClientRegistrationService.executeExternalUpdateClientMethods(r, client);
-                            }
-                            
-                            if (registerClient) {
-	                            Date currentTime = Calendar.getInstance().getTime();
-	                            client.setLastAccessTime(currentTime);
-	                            client.setLastLogonTime(currentTime);
-	
-	                            Boolean persistClientAuthorizations = appConfiguration.getDynamicRegistrationPersistClientAuthorizations();
-	                            client.setPersistClientAuthorizations(persistClientAuthorizations != null ? persistClientAuthorizations : false);
-	
-	                            clientService.persist(client);
-	
-	                            JSONObject jsonObject = getJSONObject(client);
-	                            builder.entity(jsonObject.toString(4).replace("\\/", "/"));
-	
-	                            oAuth2AuditLog.setClientId(client.getClientId());
-	                            oAuth2AuditLog.setScope(clientScopesToString(client));
-	                            oAuth2AuditLog.setSuccess(true);
-                            } else {
-                                log.trace("Client parameters are invalid, returns invalid_request error.");
-                                builder = Response.status(Response.Status.BAD_REQUEST).
-                                        entity(errorResponseFactory.getErrorAsJson(RegisterErrorResponseType.INVALID_CLIENT_METADATA));
+                        if (StringUtils.isBlank(r.getClientName()) && r.getRedirectUris() != null && !r.getRedirectUris().isEmpty()) {
+                            try {
+                                URI redUri = new URI(r.getRedirectUris().get(0));
+                                client.setClientName(redUri.getHost());
+                            } catch (Exception e) {
+                                //ignore
+                                log.error(e.getMessage(), e);
+                                client.setClientName("Unknown");
                             }
                         }
-                    } else {
-                        log.trace("Client parameters are invalid, returns invalid_request error.");
-                        builder = Response.status(Response.Status.BAD_REQUEST).
-                                entity(errorResponseFactory.getErrorAsJson(RegisterErrorResponseType.INVALID_CLIENT_METADATA));
+
+                        updateClientFromRequestObject(client, r, false);
+
+                        boolean registerClient = true;
+                        if (externalDynamicClientRegistrationService.isEnabled()) {
+                            registerClient = externalDynamicClientRegistrationService.executeExternalUpdateClientMethods(r, client);
+                        }
+
+                        if (registerClient) {
+                            Date currentTime = Calendar.getInstance().getTime();
+                            client.setLastAccessTime(currentTime);
+                            client.setLastLogonTime(currentTime);
+
+                            Boolean persistClientAuthorizations = appConfiguration.getDynamicRegistrationPersistClientAuthorizations();
+                            client.setPersistClientAuthorizations(persistClientAuthorizations != null ? persistClientAuthorizations : false);
+
+                            clientService.persist(client);
+
+                            JSONObject jsonObject = getJSONObject(client);
+                            builder.entity(jsonObject.toString(4).replace("\\/", "/"));
+
+                            oAuth2AuditLog.setClientId(client.getClientId());
+                            oAuth2AuditLog.setScope(clientScopesToString(client));
+                            oAuth2AuditLog.setSuccess(true);
+                        } else {
+                            log.trace("Client parameters are invalid, returns invalid_request error.");
+                            builder = Response.status(Response.Status.BAD_REQUEST).
+                                    entity(errorResponseFactory.getErrorAsJson(RegisterErrorResponseType.INVALID_CLIENT_METADATA));
+                        }
                     }
                 } else {
-                    log.debug("The signature algorithm for id_token cannot be none.");
+                    log.trace("Client parameters are invalid, returns invalid_request error.");
                     builder = Response.status(Response.Status.BAD_REQUEST).
                             entity(errorResponseFactory.getErrorAsJson(RegisterErrorResponseType.INVALID_CLIENT_METADATA));
                 }
@@ -288,11 +244,16 @@ public class RegisterRestWebServiceImpl implements RegisterRestWebService {
 
     // yuriyz - ATTENTION : this method is used for both registration and update client metadata cases, therefore any logic here
     // will be applied for both cases.
-    private void updateClientFromRequestObject(Client p_client, RegisterRequest requestObject) throws JSONException {
+    private void updateClientFromRequestObject(Client p_client, RegisterRequest requestObject, boolean update) throws JSONException {
         List<String> redirectUris = requestObject.getRedirectUris();
         if (redirectUris != null && !redirectUris.isEmpty()) {
             redirectUris = new ArrayList<String>(new HashSet<String>(redirectUris)); // Remove repeated elements
             p_client.setRedirectUris(redirectUris.toArray(new String[redirectUris.size()]));
+        }
+        List<String> claimsRedirectUris = requestObject.getClaimsRedirectUris();
+        if (claimsRedirectUris != null && !claimsRedirectUris.isEmpty()) {
+            claimsRedirectUris = new ArrayList<String>(new HashSet<String>(claimsRedirectUris)); // Remove repeated elements
+            p_client.setClaimRedirectUris(claimsRedirectUris.toArray(new String[claimsRedirectUris.size()]));
         }
         if (requestObject.getApplicationType() != null) {
             p_client.setApplicationType(requestObject.getApplicationType().toString());
@@ -303,10 +264,48 @@ public class RegisterRestWebServiceImpl implements RegisterRestWebService {
         if (StringUtils.isNotBlank(requestObject.getSectorIdentifierUri())) {
             p_client.setSectorIdentifierUri(requestObject.getSectorIdentifierUri());
         }
-        List<ResponseType> responseTypes = requestObject.getResponseTypes();
-        if (responseTypes != null && !responseTypes.isEmpty()) {
-            responseTypes = new ArrayList<ResponseType>(new HashSet<ResponseType>(responseTypes)); // Remove repeated elements
-            p_client.setResponseTypes(responseTypes.toArray(new ResponseType[responseTypes.size()]));
+
+        Set<ResponseType> responseTypeSet = new HashSet<ResponseType>();
+        responseTypeSet.addAll(requestObject.getResponseTypes());
+
+        Set<GrantType> grantTypeSet = new HashSet<GrantType>();
+        grantTypeSet.addAll(requestObject.getGrantTypes());
+
+        if (responseTypeSet.size() == 0 && grantTypeSet.size() == 0) {
+            responseTypeSet.add(ResponseType.CODE);
+        }
+        if (responseTypeSet.contains(ResponseType.CODE)) {
+            grantTypeSet.add(GrantType.AUTHORIZATION_CODE);
+            grantTypeSet.add(GrantType.REFRESH_TOKEN);
+        }
+        if (responseTypeSet.contains(ResponseType.TOKEN) || responseTypeSet.contains(ResponseType.ID_TOKEN)) {
+            grantTypeSet.add(GrantType.IMPLICIT);
+        }
+        if (grantTypeSet.contains(GrantType.AUTHORIZATION_CODE)) {
+            responseTypeSet.add(ResponseType.CODE);
+            grantTypeSet.add(GrantType.REFRESH_TOKEN);
+        }
+        if (grantTypeSet.contains(GrantType.IMPLICIT)) {
+            responseTypeSet.add(ResponseType.TOKEN);
+        }
+
+        Set<Set<ResponseType>> responseTypesSupported = appConfiguration.getResponseTypesSupported();
+        Set<GrantType> grantTypesSupported = appConfiguration.getGrantTypesSupported();
+
+        if (!responseTypesSupported.contains(responseTypeSet)) {
+            responseTypeSet.clear();
+        }
+
+        grantTypeSet.retainAll(grantTypesSupported);
+
+        Set<GrantType> dynamicGrantTypeDefault = appConfiguration.getDynamicGrantTypeDefault();
+        grantTypeSet.retainAll(dynamicGrantTypeDefault);
+
+        p_client.setResponseTypes(responseTypeSet.toArray(new ResponseType[responseTypeSet.size()]));
+        if (!update) {
+            p_client.setGrantTypes(grantTypeSet.toArray(new GrantType[grantTypeSet.size()]));
+        } else if (appConfiguration.getEnableClientGrantTypeUpdate()) {
+            p_client.setGrantTypes(grantTypeSet.toArray(new GrantType[grantTypeSet.size()]));
         }
 
         List<String> contacts = requestObject.getContacts();
@@ -335,8 +334,7 @@ public class RegisterRestWebServiceImpl implements RegisterRestWebService {
         if (requestObject.getSubjectType() != null) {
             p_client.setSubjectType(requestObject.getSubjectType().toString());
         }
-        if (requestObject.getIdTokenSignedResponseAlg() != null
-                && requestObject.getIdTokenSignedResponseAlg() != SignatureAlgorithm.NONE) {
+        if (requestObject.getIdTokenSignedResponseAlg() != null) {
             p_client.setIdTokenSignedResponseAlg(requestObject.getIdTokenSignedResponseAlg().toString());
         }
         if (requestObject.getIdTokenEncryptedResponseAlg() != null) {
@@ -461,7 +459,7 @@ public class RegisterRestWebServiceImpl implements RegisterRestWebService {
 
                         final Client client = clientService.getClient(clientId, accessToken);
                         if (client != null) {
-                            updateClientFromRequestObject(client, request);
+                            updateClientFromRequestObject(client, request, true);
                             clientService.merge(client);
 
                             oAuth2AuditLog.setScope(clientScopesToString(client));
@@ -553,15 +551,16 @@ public class RegisterRestWebServiceImpl implements RegisterRestWebService {
         Util.addToJSONObjectIfNotNull(responseJsonObject, CLIENT_SECRET.toString(), clientService.decryptSecret(client.getClientSecret()));
         Util.addToJSONObjectIfNotNull(responseJsonObject, RegisterResponseParam.REGISTRATION_ACCESS_TOKEN.toString(), client.getRegistrationAccessToken());
         Util.addToJSONObjectIfNotNull(responseJsonObject, REGISTRATION_CLIENT_URI.toString(),
-        		appConfiguration.getRegistrationEndpoint() + "?" +
+                appConfiguration.getRegistrationEndpoint() + "?" +
                         RegisterResponseParam.CLIENT_ID.toString() + "=" + client.getClientId());
         responseJsonObject.put(CLIENT_ID_ISSUED_AT.toString(), client.getClientIdIssuedAt().getTime() / 1000);
         responseJsonObject.put(CLIENT_SECRET_EXPIRES_AT.toString(), client.getClientSecretExpiresAt() != null && client.getClientSecretExpiresAt().getTime() > 0 ?
                 client.getClientSecretExpiresAt().getTime() / 1000 : 0);
 
         Util.addToJSONObjectIfNotNull(responseJsonObject, REDIRECT_URIS.toString(), client.getRedirectUris());
+        Util.addToJSONObjectIfNotNull(responseJsonObject, CLAIMS_REDIRECT_URIS.toString(), client.getClaimRedirectUris());
         Util.addToJSONObjectIfNotNull(responseJsonObject, RESPONSE_TYPES.toString(), ResponseType.toStringArray(client.getResponseTypes()));
-        Util.addToJSONObjectIfNotNull(responseJsonObject, GRANT_TYPES.toString(), client.getGrantTypes());
+        Util.addToJSONObjectIfNotNull(responseJsonObject, GRANT_TYPES.toString(), GrantType.toStringArray(client.getGrantTypes()));
         Util.addToJSONObjectIfNotNull(responseJsonObject, APPLICATION_TYPE.toString(), client.getApplicationType());
         Util.addToJSONObjectIfNotNull(responseJsonObject, CONTACTS.toString(), client.getContacts());
         Util.addToJSONObjectIfNotNull(responseJsonObject, CLIENT_NAME.toString(), client.getClientName());
@@ -570,7 +569,6 @@ public class RegisterRestWebServiceImpl implements RegisterRestWebService {
         Util.addToJSONObjectIfNotNull(responseJsonObject, POLICY_URI.toString(), client.getPolicyUri());
         Util.addToJSONObjectIfNotNull(responseJsonObject, TOS_URI.toString(), client.getTosUri());
         Util.addToJSONObjectIfNotNull(responseJsonObject, JWKS_URI.toString(), client.getJwksUri());
-        Util.addToJSONObjectIfNotNull(responseJsonObject, JWKS.toString(), client.getJwks());
         Util.addToJSONObjectIfNotNull(responseJsonObject, SECTOR_IDENTIFIER_URI.toString(), client.getSectorIdentifierUri());
         Util.addToJSONObjectIfNotNull(responseJsonObject, SUBJECT_TYPE.toString(), client.getSubjectType());
         Util.addToJSONObjectIfNotNull(responseJsonObject, ID_TOKEN_SIGNED_RESPONSE_ALG.toString(), client.getIdTokenSignedResponseAlg());
@@ -590,6 +588,9 @@ public class RegisterRestWebServiceImpl implements RegisterRestWebService {
         Util.addToJSONObjectIfNotNull(responseJsonObject, INITIATE_LOGIN_URI.toString(), client.getInitiateLoginUri());
         Util.addToJSONObjectIfNotNull(responseJsonObject, POST_LOGOUT_REDIRECT_URIS.toString(), client.getPostLogoutRedirectUris());
         Util.addToJSONObjectIfNotNull(responseJsonObject, REQUEST_URIS.toString(), client.getRequestUris());
+        if (!Util.isNullOrEmpty(client.getJwks())) {
+            Util.addToJSONObjectIfNotNull(responseJsonObject, JWKS.toString(), new JSONObject(client.getJwks()));
+        }
 
         // Logout params
         Util.addToJSONObjectIfNotNull(responseJsonObject, FRONT_CHANNEL_LOGOUT_URI.toString(), client.getFrontChannelLogoutUri());
@@ -605,7 +606,7 @@ public class RegisterRestWebServiceImpl implements RegisterRestWebService {
                 scopeNames[i] = scope.getDisplayName();
             }
         }
-        Util.addToJSONObjectIfNotNull(responseJsonObject, "scopes", scopeNames);
+        Util.addToJSONObjectIfNotNull(responseJsonObject, SCOPES.toString(), scopeNames);
 
         return responseJsonObject;
     }
@@ -634,10 +635,10 @@ public class RegisterRestWebServiceImpl implements RegisterRestWebService {
                             Arrays.asList(p_requestObject.getString(attr));
                     if (parameterValues != null && !parameterValues.isEmpty()) {
                         try {
-                        	boolean processed = processApplicationAttributes(p_client, attr, parameterValues);
-                        	if (!processed) {
-                        		p_client.getCustomAttributes().add(new CustomAttribute(attr, parameterValues));
-                        	}
+                            boolean processed = processApplicationAttributes(p_client, attr, parameterValues);
+                            if (!processed) {
+                                p_client.getCustomAttributes().add(new CustomAttribute(attr, parameterValues));
+                            }
                         } catch (Exception e) {
                             log.debug(e.getMessage(), e);
                         }
@@ -647,18 +648,23 @@ public class RegisterRestWebServiceImpl implements RegisterRestWebService {
         }
     }
 
-	private boolean processApplicationAttributes(Client p_client, String attr, final List<String> parameterValues) {
-		if (StringHelper.equalsIgnoreCase("oxAuthTrustedClient", attr)) {
-			boolean trustedClient = StringHelper.toBoolean(parameterValues.get(0), false);
-			p_client.setTrustedClient(trustedClient);
-			
-			return true;
-		}
-		
-		return false;
-	}
+    private boolean processApplicationAttributes(Client p_client, String attr, final List<String> parameterValues) {
+        if (StringHelper.equalsIgnoreCase("oxAuthTrustedClient", attr)) {
+            boolean trustedClient = StringHelper.toBoolean(parameterValues.get(0), false);
+            p_client.setTrustedClient(trustedClient);
 
-    private String clientScopesToString(Client client){
+            return true;
+        } else if (StringHelper.equalsIgnoreCase("oxIncludeClaimsInIdToken", attr)) {
+            boolean includeClaimsInIdToken = StringHelper.toBoolean(parameterValues.get(0), false);
+            p_client.setIncludeClaimsInIdToken(includeClaimsInIdToken);
+
+            return true;
+        }
+
+        return false;
+    }
+
+    private String clientScopesToString(Client client) {
         String[] scopeDns = client.getScopes();
         if (scopeDns != null) {
             String[] scopeNames = new String[scopeDns.length];

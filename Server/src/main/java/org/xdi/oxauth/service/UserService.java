@@ -6,27 +6,29 @@
 
 package org.xdi.oxauth.service;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Date;
-import java.util.List;
-
-import javax.annotation.Nullable;
-import javax.ejb.Stateless;
-import javax.inject.Inject;
-import javax.inject.Named;
-
+import com.unboundid.ldap.sdk.Filter;
 import org.gluu.site.ldap.persistence.LdapEntryManager;
 import org.slf4j.Logger;
 import org.xdi.ldap.model.CustomAttribute;
 import org.xdi.ldap.model.GluuStatus;
 import org.xdi.oxauth.model.common.User;
 import org.xdi.oxauth.model.config.StaticConfiguration;
+import org.xdi.oxauth.model.configuration.AppConfiguration;
 import org.xdi.oxauth.model.token.PersistentJwt;
 import org.xdi.oxauth.model.util.Util;
+import org.xdi.util.ArrayHelper;
 import org.xdi.util.StringHelper;
 
-import com.unboundid.ldap.sdk.Filter;
+import javax.annotation.Nullable;
+import javax.ejb.Stateless;
+import javax.inject.Inject;
+import javax.inject.Named;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Date;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 
 /**
  * Provides operations with users.
@@ -36,7 +38,6 @@ import com.unboundid.ldap.sdk.Filter;
 @Stateless
 @Named
 public class UserService {
-
 
 	public static final String[] USER_OBJECT_CLASSES = new String[] { "gluuPerson" };
 
@@ -51,6 +52,9 @@ public class UserService {
 
     @Inject
     private StaticConfiguration staticConfiguration;
+
+    @Inject
+    private AppConfiguration appConfiguration;
 
     /**
      * returns User by Dn
@@ -143,13 +147,18 @@ public class UserService {
     			new CustomAttribute("inum", inum),
     			new CustomAttribute("gluuStatus", GluuStatus.ACTIVE.getValue()),
 				new CustomAttribute("displayName", "User " + uid + " added via oxAuth custom plugin")));
-    	user.setUserId(uid); 
+    	user.setUserId(uid);
+
+    	List<String> personCustomObjectClassList = appConfiguration.getPersonCustomObjectClassList();
+    	if ((personCustomObjectClassList != null) && !personCustomObjectClassList.isEmpty()) {
+    		user.setCustomObjectClasses(personCustomObjectClassList.toArray(new String[personCustomObjectClassList.size()]));
+    	}
     	
 		ldapEntryManager.persist(user);
 		
 		return getUser(uid);
 	}
-    
+
     public User addUser(User user, boolean active) {
         String peopleBaseDN = staticConfiguration.getBaseDn().getPeople();
 
@@ -157,21 +166,34 @@ public class UserService {
 
         user.setDn("inum=" + inum + "," + peopleBaseDN);
         user.setAttribute("inum", inum);
-        
+
         GluuStatus status = active ? GluuStatus.ACTIVE : GluuStatus.REGISTER;
         user.setAttribute("gluuStatus",  status.getValue());
-		ldapEntryManager.persist(user);
-		
+
+        List<String> personCustomObjectClassList = appConfiguration.getPersonCustomObjectClassList();
+    	if ((personCustomObjectClassList != null) && !personCustomObjectClassList.isEmpty()) {
+    		Set<String> allObjectClasses = new HashSet<String>();
+    		allObjectClasses.addAll(personCustomObjectClassList);
+
+    		String currentObjectClasses[] = user.getCustomObjectClasses();
+    		if (ArrayHelper.isNotEmpty(currentObjectClasses)) {
+        		allObjectClasses.addAll(Arrays.asList(currentObjectClasses));
+    		}
+
+    		user.setCustomObjectClasses(allObjectClasses.toArray(new String[allObjectClasses.size()]));
+    	}
+
+    	ldapEntryManager.persist(user);
+
 		return getUserByDn(user.getDn());
 	}
-
 
     public User getUserByAttribute(String attributeName, String attributeValue) {
         log.debug("Getting user information from LDAP: attributeName = '{}', attributeValue = '{}'", attributeName, attributeValue);
 
         User user = new User();
         user.setDn(staticConfiguration.getBaseDn().getPeople());
-        
+
         List<CustomAttribute> customAttributes =  new ArrayList<CustomAttribute>();
         customAttributes.add(new CustomAttribute(attributeName, attributeValue));
 
@@ -187,13 +209,13 @@ public class UserService {
         }
     }
 
-    public User getUserBySample(User user, int limit) {
+    public List<User> getUsersBySample(User user, int limit) {
         log.debug("Getting user by sample");
 
         List<User> entries = ldapEntryManager.findEntries(user, limit, limit);
         log.debug("Found '{}' entries", entries.size());
 
-        return (User) entries;
+        return entries;
     }
 
     public User addUserAttributeByUserInum(String userInum, String attributeName, String attributeValue) {

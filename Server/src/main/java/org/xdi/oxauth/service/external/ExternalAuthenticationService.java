@@ -14,6 +14,7 @@ import org.xdi.model.custom.script.CustomScriptType;
 import org.xdi.model.custom.script.conf.CustomScriptConfiguration;
 import org.xdi.model.custom.script.model.CustomScript;
 import org.xdi.model.custom.script.model.auth.AuthenticationCustomScript;
+import org.xdi.model.custom.script.type.BaseExternalType;
 import org.xdi.model.custom.script.type.auth.PersonAuthenticationType;
 import org.xdi.model.ldap.GluuLdapConfiguration;
 import org.xdi.oxauth.service.AppInitializer;
@@ -37,8 +38,6 @@ import java.util.Map.Entry;
  * @author Yuriy Movchan Date: 21/08/2012
  */
 @ApplicationScoped
-@DependsOn("appInitializer")
-@Named
 public class ExternalAuthenticationService extends ExternalScriptService {
 
 	public final static String MODIFIED_INTERNAL_TYPES_EVENT_TYPE = "CustomScriptModifiedInternlTypesEvent";
@@ -317,8 +316,23 @@ public class ExternalAuthenticationService extends ExternalScriptService {
 
 		for (String acrValue : acrValues) {
 			if (StringHelper.isNotEmpty(acrValue)) {
-				if (customScriptConfigurationsNameMap.containsKey(StringHelper.toLowerCase(acrValue))) {
-					authModes.add(acrValue);
+				String customScriptName = StringHelper.toLowerCase(acrValue);
+				if (customScriptConfigurationsNameMap.containsKey(customScriptName)) {
+					CustomScriptConfiguration customScriptConfiguration = customScriptConfigurationsNameMap.get(customScriptName);
+					CustomScript customScript = customScriptConfiguration.getCustomScript();
+
+					// Handle internal authentication method
+					if (customScript.isInternal()) {
+						authModes.add(acrValue);
+						continue;
+					}
+
+					CustomScriptType customScriptType = customScriptConfiguration.getCustomScript().getScriptType();
+					BaseExternalType defaultImplementation = customScriptType.getDefaultImplementation();
+					BaseExternalType pythonImplementation = customScriptConfiguration.getExternalType();
+					if ((pythonImplementation != null) && (defaultImplementation != pythonImplementation)) {
+						authModes.add(acrValue);
+					}
 				}
 			}
 		}
@@ -436,6 +450,10 @@ public class ExternalAuthenticationService extends ExternalScriptService {
 	public Map<String, Integer> acrToLevelMapping() {
 		Map<String, Integer> map = Maps.newHashMap();
 		for (CustomScriptConfiguration script : getCustomScriptConfigurationsMap()) {
+			if (script.getCustomScript().isInternal()) {
+				map.put(script.getName(), -1);
+				continue;
+			}
 			map.put(script.getName(), script.getLevel());
 		}
 		return map;
@@ -458,9 +476,12 @@ public class ExternalAuthenticationService extends ExternalScriptService {
 		};
 		customScript.setName(OxConstants.SCRIPT_TYPE_INTERNAL_RESERVED_NAME);
 		customScript.setLevel(-1);
+		customScript.setInternal(true);
 
-		return new CustomScriptConfiguration(customScript, internalDefaultPersonAuthenticationType,
+		CustomScriptConfiguration customScriptConfiguration = new CustomScriptConfiguration(customScript, internalDefaultPersonAuthenticationType,
 				new HashMap<String, SimpleCustomProperty>(0));
+		
+		return customScriptConfiguration;
 	}
 
 }
