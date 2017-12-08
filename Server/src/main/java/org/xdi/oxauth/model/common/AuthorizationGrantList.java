@@ -36,7 +36,7 @@ import java.util.List;
  * Component to hold in memory authorization grant objects.
  *
  * @author Javier Rojas Blum
- * @version September 6, 2017
+ * @version November 7, 2017
  */
 @Dependent
 public class AuthorizationGrantList implements IAuthorizationGrantList {

@@ -10,7 +10,7 @@ import static org.testng.Assert.fail;
 
 /**
  * @author Javier Rojas Blum
- * @version June 26, 2017
+ * @version November 7, 2017
  */
 public class StoragerelaySchemeUriTest {
 

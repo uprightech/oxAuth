@@ -29,7 +29,7 @@ import java.util.Map;
  * </p>
  *
  * @author Javier Rojas Blum
- * @version July 18, 2017
+ * @version November 7, 2017
  */
 public enum ResponseType implements HasParamName, LdapEnum {
 

@@ -27,7 +27,7 @@ import static org.xdi.oxauth.model.authorize.AuthorizeResponseParam.*;
  * Represents an authorization response received from the authorization server.
  *
  * @author Javier Rojas Blum
- * @version August 9, 2017
+ * @version November 7, 2017
  */
 public class AuthorizationResponse extends BaseResponse {
 

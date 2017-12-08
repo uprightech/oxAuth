@@ -8,7 +8,7 @@ package org.xdi.oxauth.model.authorize;
 
 /**
  * @author Javier Rojas Blum
- * @version August 9, 2017
+ * @version November 7, 2017
  */
 public interface AuthorizeResponseParam {
 

@@ -14,7 +14,7 @@ package org.xdi.oxauth.model.common;
  * credentials.
  *
  * @author Javier Rojas Blum
- * @version June 26, 2017
+ * @version November 7, 2017
  */
 public enum AuthorizationGrantType implements HasParamName {
 
@@ -37,7 +37,9 @@ public enum AuthorizationGrantType implements HasParamName {
      * (and later used to obtain an access token).
      */
     IMPLICIT("implicit"),
-
+    /**
+     *
+     */
     PERMISSION("permission"),
     /**
      * The client credentials (or other forms of client authentication) can be
