@@ -311,6 +311,7 @@ public class TokenRestWebServiceImpl implements TokenRestWebService {
                                 user = new User();
                             }
                         }else {
+                            log.trace("RO PC - User wasn't authenticated by external script");
                             user = null;
                         }
                     }
