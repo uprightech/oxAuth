@@ -5,7 +5,7 @@
 .pydevproject
 .tern-project
 .faces-config.xml.jsfdia
-
+.factorypath
 # IntelliJ IDEA project files
 .idea
 *.iml

@@ -310,6 +310,8 @@ public class TokenRestWebServiceImpl implements TokenRestWebService {
                             if (user == null) {
                                 user = new User();
                             }
+                        }else {
+                            user = null;
                         }
                     }
 
