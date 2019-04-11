@@ -306,9 +306,9 @@ public class TokenRestWebServiceImpl implements TokenRestWebService {
                         context.setUser(user);
                         if (externalResourceOwnerPasswordCredentialsService.executeExternalAuthenticate(context)) {
                             log.trace("RO PC - User is authenticated successfully by external script.");
-                            user = context.getUser();
-                            if (user == null) {
-                                user = new User();
+                            User ctxuser = context.getUser();
+                            if (ctxuser != null) {
+                                user = ctxuser;
                             }
                         }else {
                             log.trace("RO PC - User wasn't authenticated by external script");
