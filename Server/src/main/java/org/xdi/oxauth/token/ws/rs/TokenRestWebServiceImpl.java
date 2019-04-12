@@ -301,22 +301,18 @@ public class TokenRestWebServiceImpl implements TokenRestWebService {
                         }
                     }
 
+                    boolean authenticatedByRoScript = false;
                     if (externalResourceOwnerPasswordCredentialsService.getCustomScriptConfigurations() != null && !externalResourceOwnerPasswordCredentialsService.getCustomScriptConfigurations().isEmpty()) {
                         final ExternalResourceOwnerPasswordCredentialsContext context = new ExternalResourceOwnerPasswordCredentialsContext(request, response, appConfiguration, attributeService, userService);
                         context.setUser(user);
                         if (externalResourceOwnerPasswordCredentialsService.executeExternalAuthenticate(context)) {
                             log.trace("RO PC - User is authenticated successfully by external script.");
-                            User ctxuser = context.getUser();
-                            if (ctxuser != null) {
-                                user = ctxuser;
-                            }
-                        }else {
-                            log.trace("RO PC - User wasn't authenticated by external script");
-                            user = null;
+                            authenticatedByRoScript = true;
+                            user = context.getUser();
                         }
                     }
 
-                    if (user != null) {
+                    if (user != null || authenticatedByRoScript) {
                         ResourceOwnerPasswordCredentialsGrant resourceOwnerPasswordCredentialsGrant = authorizationGrantList.createResourceOwnerPasswordCredentialsGrant(user, client);
 
                         RefreshToken reToken = resourceOwnerPasswordCredentialsGrant.createRefreshToken();
